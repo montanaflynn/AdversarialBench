@@ -1,0 +1,101 @@
+"use client";
+
+import { useState } from "react";
+import { DataTable } from "@/components/data-table";
+import { StatusBadge } from "@/components/status-badge";
+import { LikeButton } from "@/components/like-button";
+import { MessageModal } from "@/components/message-modal";
+import type { MatrixResultRow } from "@/lib/db";
+
+export function RunDetailTable({ data }: { data: MatrixResultRow[] }) {
+  const [selected, setSelected] = useState<MatrixResultRow | null>(null);
+
+  return (
+    <>
+      <DataTable
+        data={data}
+        searchKeys={["attackerName", "defenderName", "status"]}
+        searchPlaceholder="Filter by model or status..."
+        onRowClick={setSelected}
+        columns={[
+          {
+            key: "attackerName",
+            label: "Attacker",
+            sortable: true,
+            render: (row: MatrixResultRow) => (
+              <span className="text-text-primary font-medium">{row.attackerName}</span>
+            ),
+          },
+          {
+            key: "defenderName",
+            label: "Defender",
+            sortable: true,
+            render: (row: MatrixResultRow) => (
+              <span className="text-text-primary font-medium">{row.defenderName}</span>
+            ),
+          },
+          {
+            key: "status",
+            label: "Status",
+            sortable: true,
+            render: (row: MatrixResultRow) => <StatusBadge status={row.status} />,
+          },
+          {
+            key: "attackLatencyMs",
+            label: "Atk Latency",
+            sortable: true,
+            className: "tabular-nums text-right",
+            render: (row: MatrixResultRow) => (
+              <span className="text-text-muted">{(row.attackLatencyMs / 1000).toFixed(1)}s</span>
+            ),
+          },
+          {
+            key: "defenseLatencyMs",
+            label: "Def Latency",
+            sortable: true,
+            className: "tabular-nums text-right",
+            render: (row: MatrixResultRow) => (
+              <span className="text-text-muted">{(row.defenseLatencyMs / 1000).toFixed(1)}s</span>
+            ),
+          },
+          {
+            key: "attackCost",
+            label: "Cost",
+            sortable: true,
+            className: "tabular-nums text-right",
+            render: (row: MatrixResultRow) => {
+              const total = (row.attackCost ?? 0) + (row.defenseCost ?? 0);
+              return (
+                <span className="text-text-muted">
+                  {total > 0 ? `$${total.toFixed(4)}` : "-"}
+                </span>
+              );
+            },
+          },
+          {
+            key: "like",
+            label: "",
+            className: "w-10",
+            render: (row: MatrixResultRow) => (
+              <LikeButton id={`result-${row.id}`} />
+            ),
+          },
+        ]}
+      />
+
+      {selected && (
+        <MessageModal
+          title={`${selected.attackerName} \u2192 ${selected.defenderName}`}
+          onClose={() => setSelected(null)}
+          sections={[
+            { label: "Attack Prompt", content: selected.attackPrompt },
+            { label: "Attack Message", content: selected.attackMessage },
+            { label: "Defense Prompt", content: selected.defensePrompt },
+            { label: "Defense Response", content: selected.defenseResponse },
+            ...(selected.errorText ? [{ label: "Error", content: selected.errorText }] : []),
+          ]}
+        />
+      )}
+    </>
+  );
+}
