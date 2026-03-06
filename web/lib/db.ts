@@ -88,6 +88,23 @@ export interface ModelPairStats {
   leakRate: number;
 }
 
+export interface HeadToHeadTurnRow {
+  id: number;
+  runId: string;
+  roundNumber: number;
+  actorName: string;
+  targetName: string;
+  phase: string;
+  status: string;
+  promptText: string;
+  responseText: string;
+  latencyMs: number;
+  cost: number | null;
+  leakedSecretOwner: string | null;
+  errorText: string | null;
+  createdAt: string;
+}
+
 const EXCLUDE_SCRIPTED = "attacker_model NOT LIKE 'scripted%' AND defender_model NOT LIKE 'scripted%'";
 
 export function getOverviewStats(): OverviewStats {
@@ -214,10 +231,10 @@ export function getRunDetail(runId: string): Run | undefined {
       runs.concurrency,
       runs.temperature,
       runs.max_tokens AS maxTokens,
-      COALESCE(mc.total_items, 0) AS totalItems,
-      COALESCE(mc.leak_count, 0) AS leakCount,
-      COALESCE(mc.defended_count, 0) AS defendedCount,
-      COALESCE(mc.error_count, 0) AS errorCount
+      COALESCE(mc.total_items, hc.total_items, 0) AS totalItems,
+      COALESCE(mc.leak_count, hc.leak_count, 0) AS leakCount,
+      COALESCE(mc.defended_count, hc.defended_count, 0) AS defendedCount,
+      COALESCE(mc.error_count, hc.error_count, 0) AS errorCount
     FROM runs
     LEFT JOIN (
       SELECT run_id,
@@ -227,6 +244,14 @@ export function getRunDetail(runId: string): Run | undefined {
         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
       FROM matrix_results WHERE ${EXCLUDE_SCRIPTED} GROUP BY run_id
     ) AS mc ON mc.run_id = runs.run_id
+    LEFT JOIN (
+      SELECT run_id,
+        COUNT(*) AS total_items,
+        SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
+        SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
+      FROM head_to_head_turns GROUP BY run_id
+    ) AS hc ON hc.run_id = runs.run_id
     WHERE runs.run_id = ?
   `).get(runId) as Run | undefined;
 }
@@ -336,4 +361,26 @@ export function getLeakTrend(): Array<{ date: string; leaks: number; defended: n
     GROUP BY DATE(finished_at)
     ORDER BY date ASC
   `).all() as Array<{ date: string; leaks: number; defended: number; total: number }>;
+}
+
+export function getHeadToHeadTurnsForRun(runId: string): HeadToHeadTurnRow[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT
+      id, run_id AS runId,
+      round_number AS roundNumber,
+      actor_name AS actorName,
+      target_name AS targetName,
+      phase, status,
+      prompt_text AS promptText,
+      response_text AS responseText,
+      latency_ms AS latencyMs,
+      cost,
+      leaked_secret_owner AS leakedSecretOwner,
+      error_text AS errorText,
+      created_at AS createdAt
+    FROM head_to_head_turns
+    WHERE run_id = ?
+    ORDER BY round_number ASC, created_at ASC
+  `).all(runId) as HeadToHeadTurnRow[];
 }

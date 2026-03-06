@@ -1,7 +1,8 @@
-import { getRunDetail, getMatrixResultsForRun } from "@/lib/db";
+import { getRunDetail, getMatrixResultsForRun, getHeadToHeadTurnsForRun } from "@/lib/db";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { RunDetailTable } from "./table";
+import { HeadToHeadTable } from "./h2h-table";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
@@ -16,7 +17,9 @@ export default async function RunDetailPage({
   const run = getRunDetail(runId);
   if (!run) notFound();
 
-  const results = getMatrixResultsForRun(runId);
+  const isH2H = run.mode === "head-to-head";
+  const matrixResults = isH2H ? [] : getMatrixResultsForRun(runId);
+  const h2hTurns = isH2H ? getHeadToHeadTurnsForRun(runId) : [];
 
   return (
     <div className="space-y-6">
@@ -53,8 +56,17 @@ export default async function RunDetailPage({
       </div>
 
       <div>
-        <h2 className="text-sm font-semibold mb-3">Matrix Results</h2>
-        <RunDetailTable data={results} />
+        {isH2H ? (
+          <>
+            <h2 className="text-sm font-semibold mb-3">Head-to-Head Turns</h2>
+            <HeadToHeadTable data={h2hTurns} />
+          </>
+        ) : (
+          <>
+            <h2 className="text-sm font-semibold mb-3">Matrix Results</h2>
+            <RunDetailTable data={matrixResults} />
+          </>
+        )}
       </div>
     </div>
   );
