@@ -20,7 +20,7 @@ async function createAttackMessage(
   defender: ResolvedModel,
   attempts: MatrixAttempt[],
   signal?: AbortSignal
-): Promise<{ text: string; prompt: string; latencyMs: number }> {
+): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   const prompt = buildMatrixAttackPrompt(attacker, defender, attempts, context.options.attackerMessages);
   if (context.options.offline || attacker.model.startsWith("scripted:")) {
@@ -37,7 +37,13 @@ async function createAttackMessage(
     signal
   });
 
-  return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+  return {
+    text: result.text,
+    prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    latencyMs: result.latencyMs,
+    generationId: result.generationId,
+    usage: result.usage
+  };
 }
 
 async function createDefenseResponse(
@@ -48,7 +54,7 @@ async function createDefenseResponse(
   attackMessage: string,
   attemptNumber: number,
   signal?: AbortSignal
-): Promise<{ text: string; prompt: string; latencyMs: number }> {
+): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   const prompt = buildMatrixDefensePrompt(
     defender,
@@ -72,7 +78,13 @@ async function createDefenseResponse(
     signal
   });
 
-  return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+  return {
+    text: result.text,
+    prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    latencyMs: result.latencyMs,
+    generationId: result.generationId,
+    usage: result.usage
+  };
 }
 
 function summarizeRows(models: ResolvedModel[], results: MatrixResult[]): MatrixRunRecord["rows"] {
@@ -100,7 +112,11 @@ function finalizePairResult(attacker: ResolvedModel, defender: ResolvedModel, at
       attackLatencyMs: 0,
       defenseLatencyMs: 0,
       errorText: "No attempts recorded for pairing.",
-      attempts: []
+      attempts: [],
+      attackGenerationId: undefined,
+      defenseGenerationId: undefined,
+      attackUsage: undefined,
+      defenseUsage: undefined
     };
   }
 
@@ -123,7 +139,11 @@ function finalizePairResult(attacker: ResolvedModel, defender: ResolvedModel, at
     errorText: finalAttempt.errorText,
     attackLatencyMs: finalAttempt.attackLatencyMs,
     defenseLatencyMs: finalAttempt.defenseLatencyMs,
-    attempts
+    attempts,
+    attackGenerationId: finalAttempt.attackGenerationId,
+    defenseGenerationId: finalAttempt.defenseGenerationId,
+    attackUsage: finalAttempt.attackUsage,
+    defenseUsage: finalAttempt.defenseUsage
   };
 }
 
@@ -199,7 +219,11 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
               attackPrompt: attack.prompt,
               defensePrompt: defense.prompt,
               attackLatencyMs: attack.latencyMs,
-              defenseLatencyMs: defense.latencyMs
+              defenseLatencyMs: defense.latencyMs,
+              attackGenerationId: attack.generationId,
+              defenseGenerationId: defense.generationId,
+              attackUsage: attack.usage,
+              defenseUsage: defense.usage
             };
             attempts.push(attempt);
             cells[cellKey] = {
@@ -212,7 +236,11 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
               defensePrompt: defense.prompt,
               attackLatencyMs: attack.latencyMs,
               defenseLatencyMs: defense.latencyMs,
-              attempts: [...attempts]
+              attempts: [...attempts],
+              attackGenerationId: attack.generationId,
+              defenseGenerationId: defense.generationId,
+              attackUsage: attack.usage,
+              defenseUsage: defense.usage
             };
             context.db.insertMatrixAttemptWithModels(context.runId, attacker, defender, attempt);
             update(undefined, cellKey);
@@ -241,6 +269,11 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
             attackLatencyMs: 0,
             defenseLatencyMs: 0,
             errorText: message
+            ,
+            attackGenerationId: undefined,
+            defenseGenerationId: undefined,
+            attackUsage: undefined,
+            defenseUsage: undefined
           };
           result = {
             attacker: attacker.name,
@@ -253,7 +286,11 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
             attackLatencyMs: 0,
             defenseLatencyMs: 0,
             errorText: message,
-            attempts: [errorAttempt]
+            attempts: [errorAttempt],
+            attackGenerationId: undefined,
+            defenseGenerationId: undefined,
+            attackUsage: undefined,
+            defenseUsage: undefined
           };
           context.db.insertMatrixAttemptWithModels(context.runId, attacker, defender, errorAttempt);
         }

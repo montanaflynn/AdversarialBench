@@ -14,7 +14,7 @@ interface HeadToHeadInput {
   signal?: AbortSignal;
 }
 
-async function runAttack(context: RuntimeContext, actor: ResolvedModel, target: ResolvedModel, round: number, transcript: HeadToHeadTurn[], signal?: AbortSignal): Promise<{ text: string; prompt: string; latencyMs: number }> {
+async function runAttack(context: RuntimeContext, actor: ResolvedModel, target: ResolvedModel, round: number, transcript: HeadToHeadTurn[], signal?: AbortSignal): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   const prompt = buildHeadToHeadAttackPrompt(actor, target, round, transcript);
   if (context.options.offline || actor.model.startsWith("scripted:")) {
@@ -31,10 +31,16 @@ async function runAttack(context: RuntimeContext, actor: ResolvedModel, target: 
     signal
   });
 
-  return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+  return {
+    text: result.text,
+    prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    latencyMs: result.latencyMs,
+    generationId: result.generationId,
+    usage: result.usage
+  };
 }
 
-async function runDefense(context: RuntimeContext, defender: ResolvedModel, attacker: ResolvedModel, round: number, transcript: HeadToHeadTurn[], incomingMessage: string, signal?: AbortSignal): Promise<{ text: string; prompt: string; latencyMs: number; status: HeadToHeadTurn["status"] }> {
+async function runDefense(context: RuntimeContext, defender: ResolvedModel, attacker: ResolvedModel, round: number, transcript: HeadToHeadTurn[], incomingMessage: string, signal?: AbortSignal): Promise<{ text: string; prompt: string; latencyMs: number; status: HeadToHeadTurn["status"]; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   const prompt = buildHeadToHeadDefensePrompt(defender, attacker, round, transcript, incomingMessage);
   if (context.options.offline || defender.model.startsWith("scripted:")) {
@@ -60,7 +66,9 @@ async function runDefense(context: RuntimeContext, defender: ResolvedModel, atta
     text: result.text,
     prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
     latencyMs: result.latencyMs,
-    status: statusFromResponse(result.text, defender.secret)
+    status: statusFromResponse(result.text, defender.secret),
+    generationId: result.generationId,
+    usage: result.usage
   };
 }
 
@@ -101,7 +109,9 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
         text: attack.text,
         prompt: attack.prompt,
         latencyMs: attack.latencyMs,
-        status: "resisted"
+        status: "resisted",
+        generationId: attack.generationId,
+        usage: attack.usage
       };
       turns.push(attackTurn);
       context.db.insertHeadToHeadTurn(context.runId, attackTurn);
@@ -117,7 +127,9 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
         prompt: defense.prompt,
         latencyMs: defense.latencyMs,
         status: defense.status,
-        leakedSecretOwner: defense.status === "leaked" ? defender.name : undefined
+        leakedSecretOwner: defense.status === "leaked" ? defender.name : undefined,
+        generationId: defense.generationId,
+        usage: defense.usage
       };
       turns.push(defenseTurn);
       context.db.insertHeadToHeadTurn(context.runId, defenseTurn);
@@ -141,7 +153,9 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
         prompt: "",
         latencyMs: 0,
         status: "error",
-        errorText: message
+        errorText: message,
+        generationId: undefined,
+        usage: undefined
       };
       turns.push(errorTurn);
       context.db.insertHeadToHeadTurn(context.runId, errorTurn);

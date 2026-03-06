@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 
 import type { BenchmarkDatabase } from "../lib/db.js";
 import { runHeadToHead } from "../lib/head-to-head-runner.js";
@@ -40,7 +40,10 @@ type AppProps =
 
 type HeadFocusPane = "turns" | "details";
 type HistoryFocusPane = "runs" | "results" | "details";
-type MatrixFocusPane = "matrix" | "prompts" | "messages";
+type MatrixFocusPane = "matrix" | "leaderboard" | "prompts" | "messages";
+
+const PANEL_FRAME_ROWS = 3;
+const DETAIL_FOOTER_ROWS = 1;
 
 function statusChar(status: MatchStatus | undefined): string {
   if (status === "leaked") return "L";
@@ -122,6 +125,19 @@ function compactHeaderName(name: string, limit: number): string {
   return compactName(name, limit);
 }
 
+function truncateLine(text: string, width: number): string {
+  if (width <= 0) {
+    return "";
+  }
+  if (text.length <= width) {
+    return text;
+  }
+  if (width <= 3) {
+    return text.slice(0, width);
+  }
+  return `${text.slice(0, width - 3)}...`;
+}
+
 function makeProgressBar(completed: number, total: number, width = 18): string {
   if (total <= 0) {
     return `[${"-".repeat(width)}] 0/0`;
@@ -155,8 +171,36 @@ function formatCountPercent(count: number, total: number): string {
   return `${count}/${total} (${formatPercent(count, total)})`;
 }
 
+function rightAlign(text: string, width: number): string {
+  if (text.length >= width) {
+    return text;
+  }
+  return `${" ".repeat(width - text.length)}${text}`;
+}
+
 function defenseSafeCount(row: HistoryLeaderboardRow): number {
   return Math.max(0, row.defenseCells - row.defendLeaks);
+}
+
+function sumAttemptCosts(attempts: Array<{
+  attackUsage?: { cost?: number };
+  defenseUsage?: { cost?: number };
+}>): number {
+  return attempts.reduce((total, attempt) => {
+    const attackCost = typeof attempt.attackUsage?.cost === "number" ? attempt.attackUsage.cost : 0;
+    const defenseCost = typeof attempt.defenseUsage?.cost === "number" ? attempt.defenseUsage.cost : 0;
+    return total + attackCost + defenseCost;
+  }, 0);
+}
+
+function formatCost(cost: number): string {
+  if (!Number.isFinite(cost) || cost <= 0) {
+    return "-";
+  }
+  if (cost < 0.01) {
+    return `$${cost.toFixed(4)}`;
+  }
+  return `$${cost.toFixed(2)}`;
 }
 
 function toDisplayLines(text: string | undefined, fallback = "(empty)"): string[] {
@@ -165,9 +209,25 @@ function toDisplayLines(text: string | undefined, fallback = "(empty)"): string[
   }
   const lines = text
     .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line, index, array) => !(index === array.length - 1 && line === ""));
-  return lines.length > 0 ? lines : [fallback];
+    .map((line) => line.trimEnd());
+  const normalized: string[] = [];
+
+  for (const line of lines) {
+    const isBlank = line.trim() === "";
+    if (isBlank && (normalized.length === 0 || normalized[normalized.length - 1] === "")) {
+      continue;
+    }
+    normalized.push(isBlank ? "" : line);
+  }
+
+  while (normalized[0] === "") {
+    normalized.shift();
+  }
+  while (normalized[normalized.length - 1] === "") {
+    normalized.pop();
+  }
+
+  return normalized.length > 0 ? normalized : [fallback];
 }
 
 function clipLines(lines: string[], limit: number, expanded: boolean): string[] {
@@ -205,6 +265,10 @@ function wrapLines(lines: string[], width: number): string[] {
   return lines.flatMap((line) => wrapLine(line, width));
 }
 
+function panelHeightForContent(contentRows: number): number {
+  return PANEL_FRAME_ROWS + Math.max(1, contentRows);
+}
+
 function scrollWindow(lines: string[], offset: number, visibleLines: number): { lines: string[]; offset: number; total: number } {
   if (visibleLines <= 0) {
     return { lines: [], offset: 0, total: lines.length };
@@ -228,27 +292,49 @@ function scrollStep(delta: number, page = false): number {
   return page ? delta * 8 : delta;
 }
 
+function ClearSurface(props: {
+  width: number;
+  height: number;
+}): React.JSX.Element {
+  const row = " ".repeat(Math.max(1, props.width));
+  return (
+    <Box width={props.width} height={props.height} flexDirection="column">
+      {Array.from({ length: Math.max(1, props.height) }, (_, index) => (
+        <Text key={`surface-${index}`}>
+          {row}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
 function Panel(props: {
   title: string;
   children: React.ReactNode;
   borderColor?: string;
-  width?: string;
+  width?: string | number;
   marginLeft?: number;
   height?: number;
   flexGrow?: number;
+  paddingX?: number;
+  hotkeyLabel?: string;
 }): React.JSX.Element {
   return (
     <Box
       borderStyle="round"
       borderColor={props.borderColor ?? "gray"}
-      paddingX={1}
+      paddingX={props.paddingX ?? 1}
       flexDirection="column"
       width={props.width}
       marginLeft={props.marginLeft}
       height={props.height}
       flexGrow={props.flexGrow}
     >
-      <Text color={props.borderColor ?? "gray"}>{props.title}</Text>
+      <Box flexDirection="row">
+        <Text color={props.borderColor ?? "gray"}>{props.title}</Text>
+        <Box flexGrow={1} />
+        {props.hotkeyLabel ? <Text color="gray">[{props.hotkeyLabel}]</Text> : null}
+      </Box>
       <Box flexDirection="column" flexGrow={1}>{props.children}</Box>
     </Box>
   );
@@ -506,6 +592,7 @@ function MatrixView(props: {
   progress?: MatrixProgressEvent;
   history: MatrixResult[];
   leaderboard: HistoryLeaderboardRow[];
+  title: string;
   selectedRow: number;
   selectedColumn: number;
   focusPane: MatrixFocusPane;
@@ -528,22 +615,28 @@ function MatrixView(props: {
   const activeAttempt = activeResult?.attempts[activeResult.attempts.length - 1];
   const completed = props.progress?.completed ?? 0;
   const total = props.progress?.total ?? props.models.length * props.models.length;
-  const matrixHeight = Math.max(props.models.length + 7, 12);
-  const topHeight = matrixHeight;
-  const bottomHeight = Math.max(props.contentHeight - topHeight - 1, 12);
-  const halfPaneWidth = Math.max(40, Math.floor((props.contentWidth - 1) / 2));
-  const paneWrapWidth = Math.max(32, halfPaneWidth - 6);
-  const detailVisibleLines = Math.max(4, bottomHeight - 6);
   const currentModelNames = new Set(props.models.map((model) => model.name));
   const currentLeaderboard = props.leaderboard.filter((row) => currentModelNames.has(row.name));
+  const attackColumnValues = currentLeaderboard.map((row) => formatCountPercent(row.attackLeaks, row.attackCells));
+  const defenseColumnValues = currentLeaderboard.map((row) => formatCountPercent(defenseSafeCount(row), row.defenseCells));
+  const matrixContentLines = props.models.length + 2;
+  const leaderboardContentLines = currentLeaderboard.length + 2;
+  const topHeight = panelHeightForContent(Math.max(matrixContentLines, leaderboardContentLines));
+  const bottomHeight = Math.max(props.contentHeight - topHeight, panelHeightForContent(8));
+  const halfPaneWidth = Math.max(40, Math.floor((props.contentWidth - 1) / 2));
+  const topPaneInnerWidth = Math.max(24, halfPaneWidth - 4);
+  const paneWrapWidth = Math.max(32, halfPaneWidth - 6);
+  const detailVisibleLines = Math.max(6, bottomHeight - PANEL_FRAME_ROWS - DETAIL_FOOTER_ROWS);
   const leaderboardNameWidth = Math.max(
     8,
     Math.min(
       20,
       Math.max(...props.models.map((model) => model.name.length)),
-      Math.floor((props.contentWidth * 0.5 - 8) * 0.42)
+      Math.floor(topPaneInnerWidth * 0.42)
     )
   );
+  const leaderboardAttackWidth = Math.max(16, "Attack".length, ...attackColumnValues.map((value) => value.length));
+  const leaderboardDefenseWidth = Math.max(16, "Defense".length, ...defenseColumnValues.map((value) => value.length));
   const promptLines = !activeResult
     ? [
       "Select a live or completed matrix cell to inspect prompts."
@@ -584,29 +677,41 @@ function MatrixView(props: {
     <Box flexDirection="column" height={props.contentHeight} flexGrow={1}>
       <Box flexDirection="row" height={topHeight}>
         <Box width="50%" flexDirection="column">
-          <Panel title={props.focusPane === "matrix" ? `Matrix ${completed}/${total} *` : `Matrix ${completed}/${total}`} borderColor={uiColor("blue", Boolean(props.muted))} width="100%" height={topHeight}>
+          <Panel
+            title={props.focusPane === "matrix" ? `${props.title} *` : props.title}
+            borderColor={uiColor("blue", Boolean(props.muted))}
+            width="100%"
+            height={topHeight}
+            hotkeyLabel="1"
+          >
             <MatrixGrid
               models={props.models}
               progress={props.progress}
               selectedRow={props.selectedRow}
               selectedColumn={props.selectedColumn}
-              contentWidth={Math.max(32, Math.floor(props.contentWidth * 0.5) - 6)}
+              contentWidth={topPaneInnerWidth}
             />
           </Panel>
         </Box>
 
         <Box width="50%" marginLeft={1} flexDirection="column">
-          <Panel title="Leaderboard" borderColor={uiColor("blue", Boolean(props.muted))} width="100%" height={topHeight}>
-            <Text>{`${"Model".padEnd(leaderboardNameWidth)}  ${"Attack".padEnd(16)}  Defense`}</Text>
+          <Panel
+            title={props.focusPane === "leaderboard" ? "Leaderboard *" : "Leaderboard"}
+            borderColor={uiColor("blue", Boolean(props.muted))}
+            width="100%"
+            height={topHeight}
+            hotkeyLabel="2"
+          >
+            <Text>{`${"Model".padEnd(leaderboardNameWidth)}  ${rightAlign("Attack", leaderboardAttackWidth)}  ${rightAlign("Defense", leaderboardDefenseWidth)}`}</Text>
             <Text color="gray">
-              {`${"-".repeat(leaderboardNameWidth)}  ${"-".repeat(16)}  ${"-".repeat(16)}`}
+              {`${"-".repeat(leaderboardNameWidth)}  ${"-".repeat(leaderboardAttackWidth)}  ${"-".repeat(leaderboardDefenseWidth)}`}
             </Text>
-            {currentLeaderboard.map((row) => (
+            {currentLeaderboard.map((row, index) => (
               <Text
                 key={`leader-${row.name}`}
                 color={activeResult && (activeResult.attacker === row.name || activeResult.defender === row.name) ? "cyan" : undefined}
               >
-                {`${compactName(row.name, leaderboardNameWidth)}  ${formatCountPercent(row.attackLeaks, row.attackCells).padEnd(16, " ")}  ${formatCountPercent(defenseSafeCount(row), row.defenseCells)}`}
+                {`${compactName(row.name, leaderboardNameWidth)}  ${rightAlign(attackColumnValues[index] ?? "-", leaderboardAttackWidth)}  ${rightAlign(defenseColumnValues[index] ?? "-", leaderboardDefenseWidth)}`}
               </Text>
             ))}
           </Panel>
@@ -624,6 +729,7 @@ function MatrixView(props: {
             borderColor={uiColor(detailPaneBorderColor(activeResult?.status), Boolean(props.muted))}
             width="100%"
             height={bottomHeight}
+            hotkeyLabel="3"
           >
             <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
               <Box flexDirection="column">
@@ -646,8 +752,8 @@ function MatrixView(props: {
               </Box>
               <Text color="gray">
                 {promptMoreLines > 0
-                  ? `${promptMoreLines} more lines. Tab to focus, j/k to scroll.`
-                  : "End of pane. Tab to focus, j/k to scroll."}
+                  ? `${promptMoreLines} more lines. 3 focuses, j/k scroll.`
+                  : "End of pane. 3 focuses, j/k scroll."}
               </Text>
             </Box>
           </Panel>
@@ -663,6 +769,7 @@ function MatrixView(props: {
             borderColor={uiColor(detailPaneBorderColor(activeResult?.status), Boolean(props.muted))}
             width="100%"
             height={bottomHeight}
+            hotkeyLabel="4"
           >
             <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
               <Box flexDirection="column">
@@ -682,8 +789,8 @@ function MatrixView(props: {
               </Box>
               <Text color="gray">
                 {messageMoreLines > 0
-                  ? `${messageMoreLines} more lines. Tab to focus, j/k to scroll.`
-                  : "End of pane. Tab to focus, j/k to scroll."}
+                  ? `${messageMoreLines} more lines. 4 focuses, j/k scroll.`
+                  : "End of pane. 4 focuses, j/k scroll."}
               </Text>
             </Box>
           </Panel>
@@ -777,8 +884,13 @@ function HeadToHeadView(props: {
 
 export function App(props: AppProps): React.JSX.Element {
   const { exit } = useApp();
-  const stdoutRows = process.stdout.rows ?? 40;
-  const stdoutColumns = process.stdout.columns ?? 120;
+  const { stdout } = useStdout();
+  const [terminalSize, setTerminalSize] = useState(() => ({
+    rows: stdout.rows ?? 40,
+    columns: stdout.columns ?? 120
+  }));
+  const stdoutRows = terminalSize.rows;
+  const stdoutColumns = terminalSize.columns;
   const viewportRows = Math.max(stdoutRows, 24);
   const dbClosedRef = useRef(false);
   const cancelControllerRef = useRef(props.mode === "history" ? undefined : new AbortController());
@@ -820,13 +932,28 @@ export function App(props: AppProps): React.JSX.Element {
     }
   };
 
+  useEffect(() => {
+    const handleResize = (): void => {
+      setTerminalSize({
+        rows: stdout.rows ?? 40,
+        columns: stdout.columns ?? 120
+      });
+    };
+
+    handleResize();
+    stdout.on("resize", handleResize);
+    return () => {
+      stdout.off("resize", handleResize);
+    };
+  }, [stdout]);
+
   useInput((input, key) => {
     if (confirmQuit) {
-      if (key.escape) {
+      if (key.escape || input.toLowerCase() === "n") {
         setConfirmQuit(false);
         return;
       }
-      if (key.return) {
+      if (key.return || input.toLowerCase() === "y") {
         setConfirmQuit(false);
         setExitAfterCancel(true);
         setCancelling(true);
@@ -905,15 +1032,27 @@ export function App(props: AppProps): React.JSX.Element {
         return;
       }
       if (input === "2") {
-        setMatrixFocusPane("prompts");
+        setMatrixFocusPane("leaderboard");
         return;
       }
       if (input === "3") {
+        setMatrixFocusPane("prompts");
+        return;
+      }
+      if (input === "4") {
         setMatrixFocusPane("messages");
         return;
       }
       if (key.tab) {
-        setMatrixFocusPane((current) => current === "matrix" ? "prompts" : current === "prompts" ? "messages" : "matrix");
+        setMatrixFocusPane((current) =>
+          current === "matrix"
+            ? "leaderboard"
+            : current === "leaderboard"
+              ? "prompts"
+              : current === "prompts"
+                ? "messages"
+                : "matrix"
+        );
         return;
       }
 
@@ -937,12 +1076,36 @@ export function App(props: AppProps): React.JSX.Element {
         return;
       }
 
+      if (matrixFocusPane === "leaderboard") {
+        if (input === "h") {
+          setMatrixFocusPane("matrix");
+          return;
+        }
+        if (input === "l") {
+          setMatrixFocusPane("prompts");
+          return;
+        }
+        return;
+      }
+
       if (input === "h") {
-        setMatrixFocusPane((current) => current === "messages" ? "prompts" : "matrix");
+        setMatrixFocusPane((current) =>
+          current === "messages"
+            ? "prompts"
+            : current === "prompts"
+              ? "leaderboard"
+              : "matrix"
+        );
         return;
       }
       if (input === "l") {
-        setMatrixFocusPane((current) => current === "matrix" ? "prompts" : "messages");
+        setMatrixFocusPane((current) =>
+          current === "matrix"
+            ? "leaderboard"
+            : current === "leaderboard"
+              ? "prompts"
+              : "messages"
+        );
         return;
       }
       const up = key.upArrow || input === "k" || input === "u" || key.pageUp;
@@ -1076,8 +1239,6 @@ export function App(props: AppProps): React.JSX.Element {
           setError(message);
           setCompleted(true);
         }
-      } finally {
-        closeDb();
       }
     })();
 
@@ -1130,6 +1291,11 @@ export function App(props: AppProps): React.JSX.Element {
   }, [props, historyRuns, historyRunIndex, historyResultIndex]);
 
   const appState = error ? "failed" : cancelling && !completed ? "cancelling" : cancelled ? "cancelled" : completed ? "complete" : "running";
+  const matrixRunCost =
+    matrixHistory.reduce((total, result) => total + sumAttemptCosts(result.attempts), 0) +
+    Object.values(matrixProgress?.cells ?? {})
+      .filter((cell) => cell.status === "running")
+      .reduce((total, cell) => total + sumAttemptCosts(cell.attempts), 0);
   const statusText =
     appState === "complete"
       ? "COMPLETE | inspect panes, then press q to quit."
@@ -1140,46 +1306,51 @@ export function App(props: AppProps): React.JSX.Element {
           : appState === "cancelling"
             ? "CANCELLING"
             : "RUNNING";
-  const bodyHeight =
-    viewportRows
-    - 5
-    - (error ? 4 : 0);
+  const topBarHeight = props.mode === "matrix" ? 0 : 1;
+  const errorHeight = error ? panelHeightForContent(1) : 0;
+  const bodyHeight = Math.max(16, viewportRows - topBarHeight - errorHeight);
   const modalOpen = confirmQuit && !completed;
+  const topBarLine = useMemo(() => {
+    if (props.mode === "history") {
+      return truncateLine(`AdversarialBench History db=${props.dbPath}`, stdoutColumns);
+    }
 
-  const header = useMemo(
-    () => props.mode === "history"
-      ? [
-        `History`,
-        `db ${props.dbPath}`
-      ]
-      : [
-        `Run ${props.context.runId}`,
-        `${props.mode}`,
-        `${props.models.length} models`,
-        `conc ${props.runtimeOptions.concurrency}`,
-        `tokens ${props.runtimeOptions.maxTokens}`,
-        `msgs ${props.runtimeOptions.attackerMessages}`
-      ],
-    [props]
-  );
+    if (props.mode === "matrix") {
+      const completedCount = matrixProgress?.completed ?? 0;
+      const totalCount = matrixProgress?.total ?? props.models.length * props.models.length;
+      return truncateLine(
+        `AdversarialBench Matrix ${completedCount}/${totalCount} msgs=${props.runtimeOptions.attackerMessages} conc=${props.runtimeOptions.concurrency}`,
+        stdoutColumns
+      );
+    }
+
+    const completedTurns = headProgress?.completedTurns ?? headTurns.length;
+    const totalTurns = headProgress?.totalTurns ?? props.runtimeOptions.headToHeadRounds * 4;
+    return truncateLine(
+      `AdversarialBench Head-to-Head ${completedTurns}/${totalTurns} rounds=${props.runtimeOptions.headToHeadRounds} conc=${props.runtimeOptions.concurrency}`,
+      stdoutColumns
+    );
+  }, [
+    headProgress?.completedTurns,
+    headProgress?.totalTurns,
+    headTurns.length,
+    matrixProgress?.completed,
+    matrixProgress?.total,
+    props,
+    stdoutColumns
+  ]);
 
   return (
     <Box flexDirection="column" width={stdoutColumns} height={viewportRows}>
-      <Panel title="AdversarialBench" borderColor={uiColor("blue", modalOpen)} width="100%">
-        <Text>{header.join(" | ")}</Text>
-        <Text color="gray">
-          {props.mode === "history"
-            ? "History: tab cycles panes, h/l switch panes, j/k moves selection, v toggles text, q quits."
-            : "Matrix: tab cycles panes, arrows move the matrix, j/k scroll focused detail panes, v toggles text, q opens cancel confirm."}
-        </Text>
+      {topBarHeight > 0 ? (
         <Text color={uiColor(appState === "complete" ? "green" : appState === "failed" ? "red" : appState === "cancelled" ? "yellow" : "cyan", modalOpen)}>
-          {statusText}
+          {topBarLine}
         </Text>
-      </Panel>
+      ) : null}
 
       {error ? (
         <Box>
-          <Panel title="Runtime Error" borderColor={uiColor("red", modalOpen)} width="100%">
+          <Panel title="Runtime Error" borderColor={uiColor("red", modalOpen)} width="100%" height={errorHeight}>
             <Text color={uiColor("red", modalOpen)}>{error}</Text>
           </Panel>
         </Box>
@@ -1202,7 +1373,7 @@ export function App(props: AppProps): React.JSX.Element {
             expandedText={expandedText}
             contentHeight={Math.max(bodyHeight, 16)}
             contentWidth={stdoutColumns}
-            muted={modalOpen}
+            muted={false}
           />
         ) : props.mode === "matrix" ? (
           <MatrixView
@@ -1210,6 +1381,7 @@ export function App(props: AppProps): React.JSX.Element {
             progress={matrixProgress}
             history={matrixHistory}
             leaderboard={matrixLeaderboard}
+            title={`AdversarialBench ${matrixProgress?.completed ?? 0}/${matrixProgress?.total ?? props.models.length * props.models.length} msgs=${props.runtimeOptions.attackerMessages} conc=${props.runtimeOptions.concurrency} cost=${formatCost(matrixRunCost)}`}
             selectedRow={matrixSelectedRow}
             selectedColumn={matrixSelectedColumn}
             focusPane={matrixFocusPane}
@@ -1218,7 +1390,7 @@ export function App(props: AppProps): React.JSX.Element {
             expandedText={expandedText}
             contentHeight={Math.max(bodyHeight, 16)}
             contentWidth={stdoutColumns}
-            muted={modalOpen}
+            muted={false}
           />
         ) : props.left && props.right ? (
           <HeadToHeadView
@@ -1231,7 +1403,7 @@ export function App(props: AppProps): React.JSX.Element {
             selectedIndex={headSelectedIndex}
             focusPane={headFocusPane}
             expandedText={expandedText}
-            muted={modalOpen}
+            muted={false}
           />
         ) : null}
       </Box>
@@ -1244,15 +1416,14 @@ export function App(props: AppProps): React.JSX.Element {
           justifyContent="center"
           alignItems="center"
         >
-          <Box width={44} height={11}>
-            <Panel title="Cancel Run" borderColor="yellow" width="100%" height={11}>
-              <Box flexDirection="column" flexGrow={1} justifyContent="center">
-                <Text color="white">Stop this run and save partial results?</Text>
-                <Text> </Text>
-                <Text color="gray">Enter confirms cancellation.</Text>
-                <Text color="gray">Esc closes this dialog.</Text>
-              </Box>
-            </Panel>
+          <Box width={42} height={7}>
+            <Box position="absolute">
+              <ClearSurface width={42} height={7} />
+            </Box>
+            <Box position="absolute" width={42} height={7} flexDirection="column" justifyContent="center" alignItems="center">
+              <Text color="white">Exit? [Y/n]</Text>
+              <Text color="gray">Save partial results and stop this run.</Text>
+            </Box>
           </Box>
         </Box>
       ) : null}

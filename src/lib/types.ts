@@ -52,6 +52,20 @@ export interface PromptResult {
   text: string;
   latencyMs: number;
   source?: "content" | "refusal" | "reasoning" | "fallback";
+  generationId?: string;
+  usage?: UsageMetrics;
+}
+
+export interface UsageMetrics {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  reasoningTokens?: number;
+  cachedTokens?: number;
+  cacheWriteTokens?: number;
+  cost?: number;
+  upstreamInferenceCost?: number;
+  rawJson?: string;
 }
 
 export interface MatrixAttempt {
@@ -64,6 +78,10 @@ export interface MatrixAttempt {
   attackLatencyMs: number;
   defenseLatencyMs: number;
   errorText?: string;
+  attackGenerationId?: string;
+  defenseGenerationId?: string;
+  attackUsage?: UsageMetrics;
+  defenseUsage?: UsageMetrics;
 }
 
 export interface MatrixResult {
@@ -78,6 +96,10 @@ export interface MatrixResult {
   attackLatencyMs: number;
   defenseLatencyMs: number;
   attempts: MatrixAttempt[];
+  attackGenerationId?: string;
+  defenseGenerationId?: string;
+  attackUsage?: UsageMetrics;
+  defenseUsage?: UsageMetrics;
 }
 
 export interface MatrixCellState {
@@ -92,6 +114,10 @@ export interface MatrixCellState {
   attackLatencyMs: number;
   defenseLatencyMs: number;
   attempts: MatrixAttempt[];
+  attackGenerationId?: string;
+  defenseGenerationId?: string;
+  attackUsage?: UsageMetrics;
+  defenseUsage?: UsageMetrics;
 }
 
 export interface MatrixSummaryRow {
@@ -122,6 +148,8 @@ export interface HeadToHeadTurn {
   leakedSecretOwner?: string;
   status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
   errorText?: string;
+  generationId?: string;
+  usage?: UsageMetrics;
 }
 
 export interface HeadToHeadResult {
@@ -197,6 +225,12 @@ export interface MatrixHistoryAttemptDetail {
   defenseLatencyMs: number;
   errorText: string | null;
   createdAt: string;
+  attackGenerationId: string | null;
+  defenseGenerationId: string | null;
+  attackCost: number | null;
+  defenseCost: number | null;
+  attackUsageJson: string | null;
+  defenseUsageJson: string | null;
 }
 
 export interface HeadToHeadHistoryTurnDetail {
@@ -211,6 +245,9 @@ export interface HeadToHeadHistoryTurnDetail {
   leakedSecretOwner: string | null;
   errorText: string | null;
   createdAt: string;
+  generationId: string | null;
+  cost: number | null;
+  usageJson: string | null;
 }
 
 export interface HistoryRunDetail extends HistoryRunSummary {

@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 
-import type { PromptResult } from "./types.js";
+import type { PromptResult, UsageMetrics } from "./types.js";
 import { RunCancelledError } from "./utils.js";
 
 type JsonValue =
@@ -24,7 +24,9 @@ interface OpenRouterChoice {
 }
 
 interface OpenRouterResponse {
+  id?: string;
   choices?: OpenRouterChoice[];
+  usage?: JsonValue;
 }
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -113,6 +115,66 @@ export function extractMessageText(message?: OpenRouterMessage): {
   return { text: "" };
 }
 
+function numberOrUndefined(value: JsonValue | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+export function extractUsageMetrics(value: JsonValue | undefined): UsageMetrics | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, JsonValue>;
+  const promptTokens =
+    numberOrUndefined(record.prompt_tokens) ??
+    numberOrUndefined(record.input_tokens) ??
+    numberOrUndefined(record.tokens_prompt);
+  const completionTokens =
+    numberOrUndefined(record.completion_tokens) ??
+    numberOrUndefined(record.output_tokens) ??
+    numberOrUndefined(record.tokens_completion);
+  const totalTokens =
+    numberOrUndefined(record.total_tokens) ??
+    ((promptTokens ?? 0) + (completionTokens ?? 0) > 0 ? (promptTokens ?? 0) + (completionTokens ?? 0) : undefined);
+  const reasoningTokens =
+    numberOrUndefined(record.reasoning_tokens) ??
+    numberOrUndefined(record.completion_tokens_details && !Array.isArray(record.completion_tokens_details) && typeof record.completion_tokens_details === "object"
+      ? (record.completion_tokens_details as Record<string, JsonValue>).reasoning_tokens
+      : undefined);
+  const cachedTokens =
+    numberOrUndefined(record.cached_tokens) ??
+    numberOrUndefined(record.cache_read_tokens) ??
+    numberOrUndefined(record.prompt_tokens_details && !Array.isArray(record.prompt_tokens_details) && typeof record.prompt_tokens_details === "object"
+      ? (record.prompt_tokens_details as Record<string, JsonValue>).cached_tokens
+      : undefined);
+  const cacheWriteTokens = numberOrUndefined(record.cache_write_tokens);
+  const cost =
+    numberOrUndefined(record.cost) ??
+    numberOrUndefined(record.total_cost) ??
+    numberOrUndefined(record.usage_cost);
+  const upstreamInferenceCost =
+    numberOrUndefined(record.upstream_inference_cost) ??
+    numberOrUndefined(record.native_cost);
+
+  const usage: UsageMetrics = {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reasoningTokens,
+    cachedTokens,
+    cacheWriteTokens,
+    cost,
+    upstreamInferenceCost,
+    rawJson: JSON.stringify(value)
+  };
+
+  if (Object.values(usage).every((entry) => entry === undefined)) {
+    return undefined;
+  }
+
+  return usage;
+}
+
 export async function runOpenRouterPrompt(input: {
   model: string;
   systemPrompt: string;
@@ -145,7 +207,10 @@ export async function runOpenRouterPrompt(input: {
           { role: "user", content: input.userPrompt }
         ],
         temperature: input.temperature,
-        max_tokens: input.maxTokens
+        max_tokens: input.maxTokens,
+        usage: {
+          include: true
+        }
       })
     });
   } catch (error: unknown) {
@@ -171,6 +236,8 @@ export async function runOpenRouterPrompt(input: {
   return {
     text: extracted.text,
     source: extracted.source,
-    latencyMs: Math.round(performance.now() - started)
+    latencyMs: Math.round(performance.now() - started),
+    generationId: data.id,
+    usage: extractUsageMetrics(data.usage)
   };
 }

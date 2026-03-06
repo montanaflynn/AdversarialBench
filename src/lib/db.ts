@@ -78,6 +78,18 @@ export class BenchmarkDatabase {
         defense_response TEXT NOT NULL,
         attack_latency_ms INTEGER NOT NULL,
         defense_latency_ms INTEGER NOT NULL,
+        attack_generation_id TEXT,
+        defense_generation_id TEXT,
+        attack_prompt_tokens INTEGER,
+        attack_completion_tokens INTEGER,
+        attack_total_tokens INTEGER,
+        attack_cost REAL,
+        attack_usage_json TEXT,
+        defense_prompt_tokens INTEGER,
+        defense_completion_tokens INTEGER,
+        defense_total_tokens INTEGER,
+        defense_cost REAL,
+        defense_usage_json TEXT,
         error_text TEXT,
         started_at TEXT NOT NULL,
         finished_at TEXT NOT NULL
@@ -98,6 +110,18 @@ export class BenchmarkDatabase {
         defense_response TEXT NOT NULL,
         attack_latency_ms INTEGER NOT NULL,
         defense_latency_ms INTEGER NOT NULL,
+        attack_generation_id TEXT,
+        defense_generation_id TEXT,
+        attack_prompt_tokens INTEGER,
+        attack_completion_tokens INTEGER,
+        attack_total_tokens INTEGER,
+        attack_cost REAL,
+        attack_usage_json TEXT,
+        defense_prompt_tokens INTEGER,
+        defense_completion_tokens INTEGER,
+        defense_total_tokens INTEGER,
+        defense_cost REAL,
+        defense_usage_json TEXT,
         error_text TEXT,
         created_at TEXT NOT NULL
       );
@@ -129,6 +153,12 @@ export class BenchmarkDatabase {
         prompt_text TEXT NOT NULL,
         response_text TEXT NOT NULL,
         latency_ms INTEGER NOT NULL,
+        generation_id TEXT,
+        prompt_tokens INTEGER,
+        completion_tokens INTEGER,
+        total_tokens INTEGER,
+        cost REAL,
+        usage_json TEXT,
         leaked_secret_owner TEXT,
         error_text TEXT,
         created_at TEXT NOT NULL
@@ -138,6 +168,47 @@ export class BenchmarkDatabase {
       CREATE INDEX IF NOT EXISTS idx_matrix_attempts_run_id ON matrix_attempts(run_id);
       CREATE INDEX IF NOT EXISTS idx_head_to_head_turns_run_id ON head_to_head_turns(run_id);
     `);
+
+    this.ensureColumn("matrix_results", "attack_generation_id", "TEXT");
+    this.ensureColumn("matrix_results", "defense_generation_id", "TEXT");
+    this.ensureColumn("matrix_results", "attack_prompt_tokens", "INTEGER");
+    this.ensureColumn("matrix_results", "attack_completion_tokens", "INTEGER");
+    this.ensureColumn("matrix_results", "attack_total_tokens", "INTEGER");
+    this.ensureColumn("matrix_results", "attack_cost", "REAL");
+    this.ensureColumn("matrix_results", "attack_usage_json", "TEXT");
+    this.ensureColumn("matrix_results", "defense_prompt_tokens", "INTEGER");
+    this.ensureColumn("matrix_results", "defense_completion_tokens", "INTEGER");
+    this.ensureColumn("matrix_results", "defense_total_tokens", "INTEGER");
+    this.ensureColumn("matrix_results", "defense_cost", "REAL");
+    this.ensureColumn("matrix_results", "defense_usage_json", "TEXT");
+
+    this.ensureColumn("matrix_attempts", "attack_generation_id", "TEXT");
+    this.ensureColumn("matrix_attempts", "defense_generation_id", "TEXT");
+    this.ensureColumn("matrix_attempts", "attack_prompt_tokens", "INTEGER");
+    this.ensureColumn("matrix_attempts", "attack_completion_tokens", "INTEGER");
+    this.ensureColumn("matrix_attempts", "attack_total_tokens", "INTEGER");
+    this.ensureColumn("matrix_attempts", "attack_cost", "REAL");
+    this.ensureColumn("matrix_attempts", "attack_usage_json", "TEXT");
+    this.ensureColumn("matrix_attempts", "defense_prompt_tokens", "INTEGER");
+    this.ensureColumn("matrix_attempts", "defense_completion_tokens", "INTEGER");
+    this.ensureColumn("matrix_attempts", "defense_total_tokens", "INTEGER");
+    this.ensureColumn("matrix_attempts", "defense_cost", "REAL");
+    this.ensureColumn("matrix_attempts", "defense_usage_json", "TEXT");
+
+    this.ensureColumn("head_to_head_turns", "generation_id", "TEXT");
+    this.ensureColumn("head_to_head_turns", "prompt_tokens", "INTEGER");
+    this.ensureColumn("head_to_head_turns", "completion_tokens", "INTEGER");
+    this.ensureColumn("head_to_head_turns", "total_tokens", "INTEGER");
+    this.ensureColumn("head_to_head_turns", "cost", "REAL");
+    this.ensureColumn("head_to_head_turns", "usage_json", "TEXT");
+  }
+
+  private ensureColumn(tableName: string, columnName: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    if (columns.some((column) => column.name === columnName)) {
+      return;
+    }
+    this.db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
   }
 
   createRun(input: {
@@ -192,11 +263,19 @@ export class BenchmarkDatabase {
       INSERT INTO matrix_results (
         run_id, attacker_name, attacker_model, defender_name, defender_model, status,
         attack_prompt, attack_message, defense_prompt, defense_response,
-        attack_latency_ms, defense_latency_ms, error_text, started_at, finished_at
+        attack_latency_ms, defense_latency_ms,
+        attack_generation_id, defense_generation_id,
+        attack_prompt_tokens, attack_completion_tokens, attack_total_tokens, attack_cost, attack_usage_json,
+        defense_prompt_tokens, defense_completion_tokens, defense_total_tokens, defense_cost, defense_usage_json,
+        error_text, started_at, finished_at
       ) VALUES (
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @status,
         @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
-        @attackLatencyMs, @defenseLatencyMs, @errorText, @startedAt, @finishedAt
+        @attackLatencyMs, @defenseLatencyMs,
+        @attackGenerationId, @defenseGenerationId,
+        @attackPromptTokens, @attackCompletionTokens, @attackTotalTokens, @attackCost, @attackUsageJson,
+        @defensePromptTokens, @defenseCompletionTokens, @defenseTotalTokens, @defenseCost, @defenseUsageJson,
+        @errorText, @startedAt, @finishedAt
       )
     `).run({
       runId,
@@ -211,6 +290,18 @@ export class BenchmarkDatabase {
       defenseResponse: result.defenderResponse,
       attackLatencyMs: result.attackLatencyMs,
       defenseLatencyMs: result.defenseLatencyMs,
+      attackGenerationId: result.attackGenerationId ?? null,
+      defenseGenerationId: result.defenseGenerationId ?? null,
+      attackPromptTokens: result.attackUsage?.promptTokens ?? null,
+      attackCompletionTokens: result.attackUsage?.completionTokens ?? null,
+      attackTotalTokens: result.attackUsage?.totalTokens ?? null,
+      attackCost: result.attackUsage?.cost ?? null,
+      attackUsageJson: result.attackUsage?.rawJson ?? null,
+      defensePromptTokens: result.defenseUsage?.promptTokens ?? null,
+      defenseCompletionTokens: result.defenseUsage?.completionTokens ?? null,
+      defenseTotalTokens: result.defenseUsage?.totalTokens ?? null,
+      defenseCost: result.defenseUsage?.cost ?? null,
+      defenseUsageJson: result.defenseUsage?.rawJson ?? null,
       errorText: result.errorText ?? null,
       startedAt: nowIso(),
       finishedAt: nowIso()
@@ -222,11 +313,19 @@ export class BenchmarkDatabase {
       INSERT INTO matrix_results (
         run_id, attacker_name, attacker_model, defender_name, defender_model, status,
         attack_prompt, attack_message, defense_prompt, defense_response,
-        attack_latency_ms, defense_latency_ms, error_text, started_at, finished_at
+        attack_latency_ms, defense_latency_ms,
+        attack_generation_id, defense_generation_id,
+        attack_prompt_tokens, attack_completion_tokens, attack_total_tokens, attack_cost, attack_usage_json,
+        defense_prompt_tokens, defense_completion_tokens, defense_total_tokens, defense_cost, defense_usage_json,
+        error_text, started_at, finished_at
       ) VALUES (
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @status,
         @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
-        @attackLatencyMs, @defenseLatencyMs, @errorText, @startedAt, @finishedAt
+        @attackLatencyMs, @defenseLatencyMs,
+        @attackGenerationId, @defenseGenerationId,
+        @attackPromptTokens, @attackCompletionTokens, @attackTotalTokens, @attackCost, @attackUsageJson,
+        @defensePromptTokens, @defenseCompletionTokens, @defenseTotalTokens, @defenseCost, @defenseUsageJson,
+        @errorText, @startedAt, @finishedAt
       )
     `).run({
       runId,
@@ -241,6 +340,18 @@ export class BenchmarkDatabase {
       defenseResponse: result.defenderResponse,
       attackLatencyMs: result.attackLatencyMs,
       defenseLatencyMs: result.defenseLatencyMs,
+      attackGenerationId: result.attackGenerationId ?? null,
+      defenseGenerationId: result.defenseGenerationId ?? null,
+      attackPromptTokens: result.attackUsage?.promptTokens ?? null,
+      attackCompletionTokens: result.attackUsage?.completionTokens ?? null,
+      attackTotalTokens: result.attackUsage?.totalTokens ?? null,
+      attackCost: result.attackUsage?.cost ?? null,
+      attackUsageJson: result.attackUsage?.rawJson ?? null,
+      defensePromptTokens: result.defenseUsage?.promptTokens ?? null,
+      defenseCompletionTokens: result.defenseUsage?.completionTokens ?? null,
+      defenseTotalTokens: result.defenseUsage?.totalTokens ?? null,
+      defenseCost: result.defenseUsage?.cost ?? null,
+      defenseUsageJson: result.defenseUsage?.rawJson ?? null,
       errorText: result.errorText ?? null,
       startedAt: nowIso(),
       finishedAt: nowIso()
@@ -257,11 +368,19 @@ export class BenchmarkDatabase {
       INSERT INTO matrix_attempts (
         run_id, attacker_name, attacker_model, defender_name, defender_model, attempt_number, status,
         attack_prompt, attack_message, defense_prompt, defense_response,
-        attack_latency_ms, defense_latency_ms, error_text, created_at
+        attack_latency_ms, defense_latency_ms,
+        attack_generation_id, defense_generation_id,
+        attack_prompt_tokens, attack_completion_tokens, attack_total_tokens, attack_cost, attack_usage_json,
+        defense_prompt_tokens, defense_completion_tokens, defense_total_tokens, defense_cost, defense_usage_json,
+        error_text, created_at
       ) VALUES (
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @attemptNumber, @status,
         @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
-        @attackLatencyMs, @defenseLatencyMs, @errorText, @createdAt
+        @attackLatencyMs, @defenseLatencyMs,
+        @attackGenerationId, @defenseGenerationId,
+        @attackPromptTokens, @attackCompletionTokens, @attackTotalTokens, @attackCost, @attackUsageJson,
+        @defensePromptTokens, @defenseCompletionTokens, @defenseTotalTokens, @defenseCost, @defenseUsageJson,
+        @errorText, @createdAt
       )
     `).run({
       runId,
@@ -277,6 +396,18 @@ export class BenchmarkDatabase {
       defenseResponse: attempt.defenderResponse,
       attackLatencyMs: attempt.attackLatencyMs,
       defenseLatencyMs: attempt.defenseLatencyMs,
+      attackGenerationId: attempt.attackGenerationId ?? null,
+      defenseGenerationId: attempt.defenseGenerationId ?? null,
+      attackPromptTokens: attempt.attackUsage?.promptTokens ?? null,
+      attackCompletionTokens: attempt.attackUsage?.completionTokens ?? null,
+      attackTotalTokens: attempt.attackUsage?.totalTokens ?? null,
+      attackCost: attempt.attackUsage?.cost ?? null,
+      attackUsageJson: attempt.attackUsage?.rawJson ?? null,
+      defensePromptTokens: attempt.defenseUsage?.promptTokens ?? null,
+      defenseCompletionTokens: attempt.defenseUsage?.completionTokens ?? null,
+      defenseTotalTokens: attempt.defenseUsage?.totalTokens ?? null,
+      defenseCost: attempt.defenseUsage?.cost ?? null,
+      defenseUsageJson: attempt.defenseUsage?.rawJson ?? null,
       errorText: attempt.errorText ?? null,
       createdAt: nowIso()
     });
@@ -325,10 +456,14 @@ export class BenchmarkDatabase {
     this.db.prepare(`
       INSERT INTO head_to_head_turns (
         run_id, round_number, actor_name, target_name, phase, status,
-        prompt_text, response_text, latency_ms, leaked_secret_owner, error_text, created_at
+        prompt_text, response_text, latency_ms,
+        generation_id, prompt_tokens, completion_tokens, total_tokens, cost, usage_json,
+        leaked_secret_owner, error_text, created_at
       ) VALUES (
         @runId, @roundNumber, @actorName, @targetName, @phase, @status,
-        @promptText, @responseText, @latencyMs, @leakedSecretOwner, @errorText, @createdAt
+        @promptText, @responseText, @latencyMs,
+        @generationId, @promptTokens, @completionTokens, @totalTokens, @cost, @usageJson,
+        @leakedSecretOwner, @errorText, @createdAt
       )
     `).run({
       runId,
@@ -340,6 +475,12 @@ export class BenchmarkDatabase {
       promptText: turn.prompt,
       responseText: turn.text,
       latencyMs: turn.latencyMs,
+      generationId: turn.generationId ?? null,
+      promptTokens: turn.usage?.promptTokens ?? null,
+      completionTokens: turn.usage?.completionTokens ?? null,
+      totalTokens: turn.usage?.totalTokens ?? null,
+      cost: turn.usage?.cost ?? null,
+      usageJson: turn.usage?.rawJson ?? null,
       leakedSecretOwner: turn.leakedSecretOwner ?? null,
       errorText: turn.errorText ?? null,
       createdAt: nowIso()
@@ -487,7 +628,13 @@ export class BenchmarkDatabase {
         GROUP BY name, model_ref
       ) AS errors
       ON attack.name = errors.name AND attack.model_ref = errors.model_ref
-      ORDER BY attackLeaks DESC, defends DESC, defendLeaks ASC, errors ASC, name ASC
+      ORDER BY
+        (attack.attack_leaks * 1.0) / NULLIF(attack.attack_cells, 0) DESC,
+        attack.attack_leaks DESC,
+        (defense.defends * 1.0) / NULLIF(defense.defense_cells, 0) DESC,
+        defense.defends DESC,
+        errors.error_count ASC,
+        name ASC
       LIMIT ?
     `).all(limit) as HistoryLeaderboardRow[];
   }
@@ -537,6 +684,12 @@ export class BenchmarkDatabase {
         defense_response AS defenseResponse,
         attack_latency_ms AS attackLatencyMs,
         defense_latency_ms AS defenseLatencyMs,
+        attack_generation_id AS attackGenerationId,
+        defense_generation_id AS defenseGenerationId,
+        attack_cost AS attackCost,
+        defense_cost AS defenseCost,
+        attack_usage_json AS attackUsageJson,
+        defense_usage_json AS defenseUsageJson,
         error_text AS errorText,
         created_at AS createdAt
       FROM matrix_attempts
@@ -558,6 +711,9 @@ export class BenchmarkDatabase {
         prompt_text AS promptText,
         response_text AS responseText,
         latency_ms AS latencyMs,
+        generation_id AS generationId,
+        cost AS cost,
+        usage_json AS usageJson,
         leaked_secret_owner AS leakedSecretOwner,
         error_text AS errorText,
         created_at AS createdAt

@@ -11,6 +11,7 @@ The project is built for repeated runs over time:
 
 - live TUI with `ink`
 - persistent storage in SQLite
+- per-call OpenRouter usage and cost capture in SQLite when available
 - matrix and head-to-head modes only
 - full prompt and message capture for replay and inspection
 
@@ -20,7 +21,9 @@ Every defender receives a secret token in its system prompt.
 
 Every attacker tries to get that token out.
 
-Both sides are framed as generic personal assistant AI agents for named users, so the prompt context reads like an ordinary assistant-to-assistant exchange rather than explicit benchmark roleplay.
+Attackers are framed as the attacker side of a controlled model evaluation targeting another model's assistant agent.
+
+Defenders are framed as personal assistant AI agents for named users drawn from a fixed local name list, so the defense context reads like an ordinary assistant system prompt rather than explicit benchmark roleplay.
 
 Each pairing ends in one of four raw states:
 
@@ -77,6 +80,15 @@ Example with 5 models:
 - each cell stores prompts, messages, responses, status, and latency
 
 This is the default mode and the main benchmark.
+
+When OpenRouter returns usage metadata, each attack and defense call also stores:
+
+- generation id
+- prompt / completion / total tokens
+- cost
+- raw usage JSON
+
+During live matrix runs, the matrix pane title also shows the current run cost as it accumulates.
 
 ### `head-to-head`
 
@@ -274,11 +286,13 @@ Head-to-head mode shows:
 Controls:
 
 - matrix mode:
-  - `tab`: cycle focus between `Matrix`, `Prompts`, and `Messages`
-  - `1` / `2` / `3`: focus `Matrix`, `Prompts`, or `Messages` directly
+  - `1` / `2` / `3` / `4`: focus `Matrix`, `Leaderboard`, `Prompts`, or `Messages` directly
+  - `tab`: cycle focus across all four panes
   - when `Matrix` is focused:
     - `up/down` or `j/k`: move attacker selection
     - `left/right` or `h/l`: move defender selection
+  - when `Leaderboard` is focused:
+    - `h/l`: move focus left or right
   - when `Prompts` or `Messages` is focused:
     - `up/down` or `j/k`: scroll the focused pane
     - `page up/page down` or `u/d`: scroll faster
@@ -427,8 +441,10 @@ Columns:
 
 Sorting is intentionally simple:
 
-- highest attack leak count first
-- then highest non-leak defense count
-- then lowest defender leak count
+- highest attack success rate first
+- then highest attack leak count
+- then highest defense non-leak rate
+- then highest defense non-leak count
+- then lowest error count
 
 Defends and errors are still tracked elsewhere in the UI and database, but they are not shown in the leaderboard itself.
