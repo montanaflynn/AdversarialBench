@@ -129,38 +129,36 @@ export function DataTable<T extends Record<string, any>>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`text-left px-3 py-2.5 text-text-muted font-medium uppercase tracking-wider text-[11px] ${col.className ?? ""}`}
+                  className={`text-left px-3 text-text-muted font-medium uppercase tracking-wider text-[11px] ${col.filterable ? "py-1.5" : "py-2.5"} ${col.className ?? ""}`}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      onClick={() => col.sortable && toggleSort(col.key)}
-                      className={col.sortable ? "cursor-pointer hover:text-text-secondary select-none" : ""}
-                    >
-                      {col.label}
-                      {sortKey === col.key && (
-                        <span className="ml-1 text-accent">
-                          {sortDir === "asc" ? "\u2191" : "\u2193"}
-                        </span>
-                      )}
-                    </span>
-                    {col.filterable && filterOptions[col.key] && (
-                      <select
-                        value={filters[col.key] ?? ""}
-                        onChange={(e) => setFilter(col.key, e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        className={`ml-auto bg-transparent border rounded px-1 py-0.5 text-[10px] font-normal normal-case tracking-normal focus:outline-none cursor-pointer appearance-none max-w-[100px] truncate ${
-                          filters[col.key]
-                            ? "border-accent text-accent"
-                            : "border-border-subtle text-text-muted"
-                        }`}
-                      >
-                        <option value="">All</option>
-                        {filterOptions[col.key].map((v) => (
-                          <option key={v} value={v}>{v}</option>
-                        ))}
-                      </select>
+                  <span
+                    onClick={() => col.sortable && toggleSort(col.key)}
+                    className={`${col.sortable ? "cursor-pointer hover:text-text-secondary select-none" : ""}`}
+                  >
+                    {col.label}
+                    {sortKey === col.key && (
+                      <span className="ml-1 text-accent">
+                        {sortDir === "asc" ? "\u2191" : "\u2193"}
+                      </span>
                     )}
-                  </div>
+                  </span>
+                  {col.filterable && filterOptions[col.key] && (
+                    <select
+                      value={filters[col.key] ?? ""}
+                      onChange={(e) => setFilter(col.key, e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`block mt-1 w-full bg-surface-raised border rounded px-1.5 py-0.5 text-[10px] font-normal normal-case tracking-normal focus:outline-none cursor-pointer ${
+                        filters[col.key]
+                          ? "border-accent text-accent"
+                          : "border-border text-text-muted"
+                      }`}
+                    >
+                      <option value="">All</option>
+                      {filterOptions[col.key].map((v) => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  )}
                 </th>
               ))}
             </tr>
