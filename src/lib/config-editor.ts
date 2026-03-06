@@ -7,10 +7,9 @@ import type { BenchmarkConfig, ModelDefinition } from "./types.js";
 const DEFAULT_CONFIG: BenchmarkConfig = {
   defaults: {
     concurrency: 5,
+    headToHeadConcurrency: 2,
     temperature: 0.7,
-    maxTokens: 180,
     attackerMessages: 1,
-    headToHeadRounds: 4,
     stopOnLeak: true
   },
   models: []

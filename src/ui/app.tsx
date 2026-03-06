@@ -13,6 +13,7 @@ import type {
   HistoryLeaderboardRow,
   HistoryRunDetail,
   HistoryRunSummary,
+  LeakMatrixResultSummary,
   MatchStatus,
   MatrixCellState,
   MatrixHistoryAttemptDetail,
@@ -30,6 +31,11 @@ type AppProps =
     dbPath: string;
   }
   | {
+    mode: "leaks";
+    db: BenchmarkDatabase;
+    dbPath: string;
+  }
+  | {
     mode: "matrix" | "head-to-head";
     context: RuntimeContext;
     models: ResolvedModel[];
@@ -38,9 +44,19 @@ type AppProps =
     right?: ResolvedModel;
   };
 
-type HeadFocusPane = "turns" | "details";
-type HistoryFocusPane = "runs" | "results" | "details";
+type HeadFocusPane = "turns" | "summary" | "prompts" | "messages";
+type HistoryFocusPane = "runs" | "leaderboard" | "results" | "details";
 type MatrixFocusPane = "matrix" | "leaderboard" | "prompts" | "messages";
+type LeakFocusPane = "leaks" | "messages";
+type LeaderboardLabelMode = "name" | "model";
+type HeadToHeadExchange = {
+  round: number;
+  attacker: string;
+  defender: string;
+  attackTurn?: HeadToHeadTurn;
+  defenseTurn?: HeadToHeadTurn;
+  status: MatchStatus;
+};
 
 const PANEL_FRAME_ROWS = 3;
 const DETAIL_FOOTER_ROWS = 1;
@@ -178,8 +194,38 @@ function rightAlign(text: string, width: number): string {
   return `${" ".repeat(width - text.length)}${text}`;
 }
 
-function defenseSafeCount(row: HistoryLeaderboardRow): number {
-  return Math.max(0, row.defenseCells - row.defendLeaks);
+function defenseHeldCount(row: HistoryLeaderboardRow): number {
+  return Math.max(0, row.defends);
+}
+
+function sortLeaderboardRows(rows: HistoryLeaderboardRow[]): HistoryLeaderboardRow[] {
+  return [...rows].sort((a, b) => {
+    const attackRateA = a.attackCells > 0 ? a.attackLeaks / a.attackCells : 0;
+    const attackRateB = b.attackCells > 0 ? b.attackLeaks / b.attackCells : 0;
+    if (attackRateB !== attackRateA) {
+      return attackRateB - attackRateA;
+    }
+    if (b.attackLeaks !== a.attackLeaks) {
+      return b.attackLeaks - a.attackLeaks;
+    }
+
+    const defenseRateA = a.defenseCells > 0 ? defenseHeldCount(a) / a.defenseCells : 0;
+    const defenseRateB = b.defenseCells > 0 ? defenseHeldCount(b) / b.defenseCells : 0;
+    if (defenseRateB !== defenseRateA) {
+      return defenseRateB - defenseRateA;
+    }
+    if (defenseHeldCount(b) !== defenseHeldCount(a)) {
+      return defenseHeldCount(b) - defenseHeldCount(a);
+    }
+    if (a.errors !== b.errors) {
+      return a.errors - b.errors;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function visibleLeaderboardRows(rows: HistoryLeaderboardRow[]): HistoryLeaderboardRow[] {
+  return sortLeaderboardRows(rows.filter((row) => !row.modelRef.startsWith("scripted:")));
 }
 
 function sumAttemptCosts(attempts: Array<{
@@ -201,6 +247,10 @@ function formatCost(cost: number): string {
     return `$${cost.toFixed(4)}`;
   }
   return `$${cost.toFixed(2)}`;
+}
+
+function formatTokenLimit(maxTokens: number): string {
+  return maxTokens > 0 ? String(maxTokens) : "auto";
 }
 
 function toDisplayLines(text: string | undefined, fallback = "(empty)"): string[] {
@@ -292,6 +342,39 @@ function scrollStep(delta: number, page = false): number {
   return page ? delta * 8 : delta;
 }
 
+function deriveHeadToHeadExchanges(turns: HeadToHeadTurn[]): HeadToHeadExchange[] {
+  const exchanges = new Map<string, HeadToHeadExchange>();
+  const order: string[] = [];
+
+  for (const turn of turns) {
+    const attacker = turn.phase === "attack" ? turn.actor : turn.target;
+    const defender = turn.phase === "attack" ? turn.target : turn.actor;
+    const key = `${turn.round}:${attacker}->${defender}`;
+
+    let exchange = exchanges.get(key);
+    if (!exchange) {
+      exchange = {
+        round: turn.round,
+        attacker,
+        defender,
+        status: turn.phase === "attack" ? "running" : turn.status
+      };
+      exchanges.set(key, exchange);
+      order.push(key);
+    }
+
+    if (turn.phase === "attack") {
+      exchange.attackTurn = turn;
+      exchange.status = turn.status === "error" ? "error" : exchange.defenseTurn ? exchange.defenseTurn.status : "running";
+    } else {
+      exchange.defenseTurn = turn;
+      exchange.status = turn.status;
+    }
+  }
+
+  return order.map((key) => exchanges.get(key)!).filter(Boolean);
+}
+
 function ClearSurface(props: {
   width: number;
   height: number;
@@ -318,6 +401,8 @@ function Panel(props: {
   flexGrow?: number;
   paddingX?: number;
   hotkeyLabel?: string;
+  hotkeyActive?: boolean;
+  hotkeyNote?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <Box
@@ -333,7 +418,8 @@ function Panel(props: {
       <Box flexDirection="row">
         <Text color={props.borderColor ?? "gray"}>{props.title}</Text>
         <Box flexGrow={1} />
-        {props.hotkeyLabel ? <Text color="gray">[{props.hotkeyLabel}]</Text> : null}
+        {props.hotkeyNote ? <Box marginRight={props.hotkeyLabel ? 1 : 0}>{props.hotkeyNote}</Box> : null}
+        {props.hotkeyLabel ? <Text color={props.hotkeyActive ? (props.borderColor ?? "cyan") : "gray"}>[{props.hotkeyLabel}]</Text> : null}
       </Box>
       <Box flexDirection="column" flexGrow={1}>{props.children}</Box>
     </Box>
@@ -391,35 +477,117 @@ function HistoryView(props: {
   runIndex: number;
   resultIndex: number;
   focusPane: HistoryFocusPane;
+  detailScrollOffset: number;
+  leaderboardLabelMode: LeaderboardLabelMode;
   expandedText: boolean;
   contentHeight: number;
   contentWidth: number;
   muted?: boolean;
 }): React.JSX.Element {
-  const topHeight = Math.max(12, Math.floor((props.contentHeight - 1) * 0.42));
-  const bottomHeight = Math.max(props.contentHeight - topHeight - 1, 12);
+  const topHeight = Math.max(12, Math.floor(props.contentHeight * 0.4));
+  const bottomHeight = Math.max(props.contentHeight - topHeight, 12);
   const selectedRunMode = props.selectedRun?.mode;
   const detailTitle = selectedRunMode === "head-to-head" ? "Turn Detail" : "Match Detail";
-  const detailWrapWidth = Math.max(24, Math.floor(props.contentWidth * 0.56) - 8);
+  const halfPaneWidth = Math.max(40, Math.floor((props.contentWidth - 1) / 2));
+  const topPaneInnerWidth = Math.max(24, halfPaneWidth - 4);
+  const detailWrapWidth = Math.max(32, halfPaneWidth - 6);
+  const listVisibleLines = Math.max(4, topHeight - PANEL_FRAME_ROWS);
+  const detailVisibleLines = Math.max(6, bottomHeight - PANEL_FRAME_ROWS - DETAIL_FOOTER_ROWS);
+  const displayLeaderboard = visibleLeaderboardRows(props.leaderboard);
+  const historyLabelValues = displayLeaderboard.map((row) => props.leaderboardLabelMode === "model" ? row.modelRef : row.name);
   const historyLeaderboardNameWidth = Math.max(
     8,
     Math.min(
-      20,
-      Math.max(...props.leaderboard.map((row) => row.name.length), 8),
-      Math.floor(props.contentWidth * 0.24)
+      28,
+      Math.max(...historyLabelValues.map((value) => value.length), 8),
+      Math.floor(topPaneInnerWidth * 0.4)
     )
+  );
+  const historyAttackWidth = Math.max(16, "Attack".length, ...displayLeaderboard.map((row) => formatCountPercent(row.attackLeaks, row.attackCells).length));
+  const historyDefenseWidth = Math.max(16, "Defense".length, ...displayLeaderboard.map((row) => formatCountPercent(defenseHeldCount(row), row.defenseCells).length));
+
+  const selectedRunIndex = clampIndex(props.runIndex, props.runs.length);
+  const runsOffset = Math.max(0, Math.min(selectedRunIndex - Math.floor(listVisibleLines / 2), Math.max(0, props.runs.length - listVisibleLines)));
+  const visibleRuns = props.runs.slice(runsOffset, runsOffset + listVisibleLines);
+
+  const resultItems = props.selectedRun?.mode === "matrix"
+    ? props.matrixResults.map((result) => ({
+      key: `${result.attackerName}-${result.defenderName}`,
+      color: statusColor(result.status),
+      text: `${result.attackerName} -> ${result.defenderName} [${titleCaseStatus(result.status)}] x${result.attempts}`
+    }))
+    : props.headTurns.map((turn, index) => ({
+      key: `${turn.roundNumber}-${turn.actorName}-${turn.phase}-${index}`,
+      color: statusColor(turn.status),
+      text: `[r${turn.roundNumber}] ${turn.actorName} ${turn.phase} -> ${turn.targetName} [${titleCaseStatus(turn.status)}]`
+    }));
+  const selectedResultIndex = clampIndex(props.resultIndex, resultItems.length);
+  const resultsOffset = Math.max(0, Math.min(selectedResultIndex - Math.floor(detailVisibleLines / 2), Math.max(0, resultItems.length - detailVisibleLines)));
+  const visibleResults = resultItems.slice(resultsOffset, resultsOffset + detailVisibleLines);
+
+  const detailLines = !props.selectedRun
+    ? ["Select a saved run first."]
+    : props.selectedRun.mode === "matrix"
+      ? !props.selectedMatrixResult
+        ? ["Select a matrix result to inspect saved prompts and messages."]
+        : [
+          props.selectedRun.runId,
+          `${props.selectedRun.mode} | ${props.selectedRun.status} | conc ${props.selectedRun.concurrency} | tokens ${formatTokenLimit(props.selectedRun.maxTokens)}`,
+          `${props.selectedMatrixResult.attackerName} -> ${props.selectedMatrixResult.defenderName} | ${titleCaseStatus(props.selectedMatrixResult.status)}`,
+          props.selectedMatrixResult.defenderOwnerName ? `Target owner: ${props.selectedMatrixResult.defenderOwnerName} [${props.selectedMatrixResult.defenderOwnerNameGroup ?? "-"}]` : "",
+          ...props.attempts.flatMap((attempt, index) => [
+            "",
+            `Attempt ${attempt.attemptNumber} | ${titleCaseStatus(attempt.status)}`,
+            "",
+            ...buildBlockLines("Attack Prompt", attempt.attackPrompt, detailWrapWidth),
+            "",
+            ...buildBlockLines("Attack Message", attempt.attackMessage, detailWrapWidth),
+            "",
+            ...buildBlockLines("Defense Prompt", attempt.defensePrompt, detailWrapWidth),
+            "",
+            ...buildBlockLines(attempt.status === "error" ? "Error" : "Defense Response", attempt.defenseResponse || attempt.errorText || "", detailWrapWidth),
+            ...(index === props.attempts.length - 1 ? [] : [""])
+          ]).filter(Boolean)
+        ]
+      : !props.selectedHeadTurn
+        ? ["Select a turn to inspect saved prompt and response."]
+        : [
+          props.selectedRun.runId,
+          `${props.selectedRun.mode} | ${props.selectedRun.status} | conc ${props.selectedRun.concurrency} | tokens ${formatTokenLimit(props.selectedRun.maxTokens)}`,
+          `Round ${props.selectedHeadTurn.roundNumber} | ${props.selectedHeadTurn.actorName} ${props.selectedHeadTurn.phase} -> ${props.selectedHeadTurn.targetName} | ${titleCaseStatus(props.selectedHeadTurn.status)}`,
+          props.selectedHeadTurn.targetOwnerName ? `Target owner: ${props.selectedHeadTurn.targetOwnerName} [${props.selectedHeadTurn.targetOwnerNameGroup ?? "-"}]` : "",
+          "",
+          ...buildBlockLines("Prompt", props.selectedHeadTurn.promptText, detailWrapWidth),
+          "",
+          ...buildBlockLines(props.selectedHeadTurn.status === "error" ? "Error" : "Response", props.selectedHeadTurn.responseText || props.selectedHeadTurn.errorText || "", detailWrapWidth)
+        ].filter(Boolean);
+  const detailWindow = scrollWindow(detailLines, props.detailScrollOffset, detailVisibleLines);
+  const detailMoreLines = Math.max(0, detailWindow.total - (detailWindow.offset + detailWindow.lines.length));
+  const leaderboardNote = (
+    <Box flexDirection="row">
+      <Text color={props.leaderboardLabelMode === "model" ? "cyan" : "gray"}>[m]odel</Text>
+      <Text color="gray"> </Text>
+      <Text color={props.leaderboardLabelMode === "name" ? "cyan" : "gray"}>[n]ame</Text>
+    </Box>
   );
 
   return (
     <Box flexDirection="column" height={props.contentHeight} flexGrow={1}>
       <Box flexDirection="row" height={topHeight}>
-        <Box width="44%" flexDirection="column">
-          <Panel title={props.focusPane === "runs" ? "Runs *" : "Runs"} borderColor={uiColor(props.focusPane === "runs" ? "cyan" : "gray", Boolean(props.muted))} width="100%" height={topHeight}>
-            {props.runs.length === 0 ? (
+        <Box width="50%" flexDirection="column">
+          <Panel
+            title="Runs"
+            borderColor={uiColor("blue", Boolean(props.muted))}
+            width="100%"
+            height={topHeight}
+            hotkeyLabel="1"
+            hotkeyActive={props.focusPane === "runs"}
+          >
+            {visibleRuns.length === 0 ? (
               <Text color="gray">No saved runs found in this database.</Text>
             ) : (
-              props.runs.slice(0, Math.max(1, topHeight - 4)).map((run, index) => {
-                const selected = index === clampIndex(props.runIndex, props.runs.length);
+              visibleRuns.map((run, index) => {
+                const selected = runsOffset + index === selectedRunIndex;
                 return (
                   <Text key={run.runId} color={selected ? "cyan" : undefined}>
                     {selected ? ">" : " "} {run.mode} {run.status} {run.startedAt.slice(0, 19).replace("T", " ")} L{run.leakCount} D{run.defendedCount} E{run.errorCount}
@@ -430,13 +598,21 @@ function HistoryView(props: {
           </Panel>
         </Box>
 
-        <Box width="56%" marginLeft={1} flexDirection="column">
-          <Panel title="Leaderboard" borderColor={uiColor("yellow", Boolean(props.muted))} width="100%" height={topHeight}>
-            <Text>{`${"Model".padEnd(historyLeaderboardNameWidth)}  ${"Attack".padEnd(16)}  Defense`}</Text>
-            <Text color="gray">{`${"-".repeat(historyLeaderboardNameWidth)}  ${"-".repeat(16)}  ${"-".repeat(16)}`}</Text>
-            {props.leaderboard.slice(0, Math.max(1, topHeight - 5)).map((row) => (
+        <Box width="50%" marginLeft={1} flexDirection="column">
+          <Panel
+            title="Leaderboard"
+            borderColor={uiColor("blue", Boolean(props.muted))}
+            width="100%"
+            height={topHeight}
+            hotkeyLabel="2"
+            hotkeyActive={props.focusPane === "leaderboard"}
+            hotkeyNote={leaderboardNote}
+          >
+            <Text>{`${(props.leaderboardLabelMode === "model" ? "Model Ref" : "Name").padEnd(historyLeaderboardNameWidth)}  ${rightAlign("Attack", historyAttackWidth)}  ${rightAlign("Defense", historyDefenseWidth)}`}</Text>
+            <Text color="gray">{`${"-".repeat(historyLeaderboardNameWidth)}  ${"-".repeat(historyAttackWidth)}  ${"-".repeat(historyDefenseWidth)}`}</Text>
+            {displayLeaderboard.slice(0, Math.max(1, listVisibleLines - 2)).map((row) => (
               <Text key={`history-leader-${row.name}`}>
-                {`${compactName(row.name, historyLeaderboardNameWidth)}  ${formatCountPercent(row.attackLeaks, row.attackCells).padEnd(16, " ")}  ${formatCountPercent(defenseSafeCount(row), row.defenseCells)}`}
+                {`${compactName(props.leaderboardLabelMode === "model" ? row.modelRef : row.name, historyLeaderboardNameWidth)}  ${rightAlign(formatCountPercent(row.attackLeaks, row.attackCells), historyAttackWidth)}  ${rightAlign(formatCountPercent(defenseHeldCount(row), row.defenseCells), historyDefenseWidth)}`}
               </Text>
             ))}
           </Panel>
@@ -444,31 +620,29 @@ function HistoryView(props: {
       </Box>
 
       <Box flexDirection="row" height={bottomHeight}>
-        <Box width="44%" flexDirection="column">
-          <Panel title={props.focusPane === "results" ? "Results *" : "Results"} borderColor={uiColor(props.focusPane === "results" ? "cyan" : "gray", Boolean(props.muted))} width="100%" height={bottomHeight}>
+        <Box width="50%" flexDirection="column">
+          <Panel
+            title="Results"
+            borderColor={uiColor("green", Boolean(props.muted))}
+            width="100%"
+            height={bottomHeight}
+            hotkeyLabel="3"
+            hotkeyActive={props.focusPane === "results"}
+          >
             {!props.selectedRun ? (
               <Text color="gray">Select a run to inspect saved results.</Text>
-            ) : props.selectedRun.mode === "matrix" ? (
-              props.matrixResults.length === 0 ? (
+            ) : resultItems.length === 0 ? (
+              props.selectedRun.mode === "matrix" ? (
                 <Text color="gray">No matrix results saved for this run.</Text>
               ) : (
-                props.matrixResults.slice(0, Math.max(1, bottomHeight - 4)).map((result, index) => {
-                  const selected = index === clampIndex(props.resultIndex, props.matrixResults.length);
-                  return (
-                    <Text key={`${result.attackerName}-${result.defenderName}`} color={selected ? "cyan" : statusColor(result.status)}>
-                      {selected ? ">" : " "} {result.attackerName} {"->"} {result.defenderName} [{titleCaseStatus(result.status)}] x{result.attempts}
-                    </Text>
-                  );
-                })
+                <Text color="gray">No head-to-head turns saved for this run.</Text>
               )
-            ) : props.headTurns.length === 0 ? (
-              <Text color="gray">No head-to-head turns saved for this run.</Text>
             ) : (
-              props.headTurns.slice(0, Math.max(1, bottomHeight - 4)).map((turn, index) => {
-                const selected = index === clampIndex(props.resultIndex, props.headTurns.length);
+              visibleResults.map((result, index) => {
+                const selected = resultsOffset + index === selectedResultIndex;
                 return (
-                  <Text key={`${turn.roundNumber}-${turn.actorName}-${turn.phase}-${index}`} color={selected ? "cyan" : statusColor(turn.status)}>
-                    {selected ? ">" : " "} [r{turn.roundNumber}] {turn.actorName} {turn.phase} {"->"} {turn.targetName} [{titleCaseStatus(turn.status)}]
+                  <Text key={result.key} color={selected ? "cyan" : result.color}>
+                    {selected ? ">" : " "} {result.text}
                   </Text>
                 );
               })
@@ -476,52 +650,187 @@ function HistoryView(props: {
           </Panel>
         </Box>
 
-        <Box width="56%" marginLeft={1} flexDirection="column">
-          <Panel title={props.focusPane === "details" ? `${detailTitle} *` : detailTitle} borderColor={uiColor("cyan", Boolean(props.muted))} width="100%" height={bottomHeight}>
-            {!props.selectedRun ? (
-              <Text color="gray">Select a saved run first.</Text>
-            ) : (
-              <>
-                <Text color="cyan">{props.selectedRun.runId}</Text>
-                <Text color="gray">
-                  {props.selectedRun.mode} | {props.selectedRun.status} | conc {props.selectedRun.concurrency} | tokens {props.selectedRun.maxTokens}
-                </Text>
-                {props.selectedRun.mode === "matrix" ? (
-                  !props.selectedMatrixResult ? (
-                    <Text color="gray">Select a matrix result to inspect attempts.</Text>
-                  ) : (
-                    <>
-                      <Text color={statusColor(props.selectedMatrixResult.status)}>
-                        {props.selectedMatrixResult.attackerName} {"->"} {props.selectedMatrixResult.defenderName} | {titleCaseStatus(props.selectedMatrixResult.status)}
-                      </Text>
-                      {props.attempts.map((attempt) => (
-                        <Box key={`history-attempt-${attempt.attemptNumber}`} flexDirection="column" marginTop={1}>
-                          <Text color="gray">Attempt {attempt.attemptNumber} | {titleCaseStatus(attempt.status)}</Text>
-                          <TextBlock title="Attack Prompt" value={attempt.attackPrompt} expanded={props.expandedText} maxLines={8} wrapWidth={detailWrapWidth} />
-                          <TextBlock title="Attack Message" value={attempt.attackMessage} expanded={props.expandedText} maxLines={6} wrapWidth={detailWrapWidth} />
-                          <TextBlock title="Defense Prompt" value={attempt.defensePrompt} expanded={props.expandedText} maxLines={8} wrapWidth={detailWrapWidth} />
-                          <TextBlock title={attempt.status === "error" ? "Error" : "Defense Response"} value={attempt.defenseResponse || attempt.errorText || ""} expanded={props.expandedText} color={attempt.status === "error" ? "red" : "cyan"} maxLines={8} wrapWidth={detailWrapWidth} />
-                        </Box>
-                      ))}
-                    </>
-                  )
-                ) : (
-                  !props.selectedHeadTurn ? (
-                    <Text color="gray">Select a turn to inspect prompt and response.</Text>
-                  ) : (
-                    <>
-                      <Text color={statusColor(props.selectedHeadTurn.status)}>
-                        Round {props.selectedHeadTurn.roundNumber} | {props.selectedHeadTurn.actorName} {props.selectedHeadTurn.phase} {"->"} {props.selectedHeadTurn.targetName} | {titleCaseStatus(props.selectedHeadTurn.status)}
-                      </Text>
-                      <TextBlock title="Prompt" value={props.selectedHeadTurn.promptText} expanded={props.expandedText} maxLines={12} wrapWidth={detailWrapWidth} />
-                      <TextBlock title={props.selectedHeadTurn.status === "error" ? "Error" : "Response"} value={props.selectedHeadTurn.responseText || props.selectedHeadTurn.errorText || ""} expanded={props.expandedText} color={props.selectedHeadTurn.status === "error" ? "red" : "cyan"} maxLines={12} wrapWidth={detailWrapWidth} />
-                    </>
-                  )
-                )}
-              </>
-            )}
+        <Box width="50%" marginLeft={1} flexDirection="column">
+          <Panel
+            title={`${detailTitle} ${detailWindow.total === 0 ? "0/0" : `${detailWindow.offset + 1}-${Math.min(detailWindow.offset + detailWindow.lines.length, detailWindow.total)}/${detailWindow.total}`}`}
+            borderColor={uiColor(props.selectedRun?.mode === "matrix" ? detailPaneBorderColor(props.selectedMatrixResult?.status) : detailPaneBorderColor(props.selectedHeadTurn?.status), Boolean(props.muted))}
+            width="100%"
+            height={bottomHeight}
+            hotkeyLabel="4"
+            hotkeyActive={props.focusPane === "details"}
+          >
+            <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
+              <Box flexDirection="column">
+                {detailWindow.lines.map((line, index) => {
+                  const isBlockTitle = [
+                    "Attack Prompt",
+                    "Attack Message",
+                    "Defense Prompt",
+                    "Defense Response",
+                    "Prompt",
+                    "Response",
+                    "Error"
+                  ].includes(line);
+                  const isAttemptLine = line.startsWith("Attempt ");
+                  const isRunLine = props.selectedRun ? index === 0 && line === props.selectedRun.runId : false;
+                  const activeStatus = props.selectedRun?.mode === "matrix" ? props.selectedMatrixResult?.status : props.selectedHeadTurn?.status;
+                  return (
+                    <Text
+                      key={`history-detail-${index}`}
+                      color={isBlockTitle ? "cyan" : isAttemptLine ? "gray" : isRunLine ? "cyan" : index === 2 ? statusColor(activeStatus) : undefined}
+                    >
+                      {line}
+                    </Text>
+                  );
+                })}
+              </Box>
+              <Text color="gray">
+                {detailMoreLines > 0
+                  ? `${detailMoreLines} more lines. 4 focuses, j/k scroll.`
+                  : "End of pane. 4 focuses, j/k scroll."}
+              </Text>
+            </Box>
           </Panel>
         </Box>
+      </Box>
+    </Box>
+  );
+}
+
+function LeaksView(props: {
+  leaks: LeakMatrixResultSummary[];
+  attempts: MatrixHistoryAttemptDetail[];
+  leakIndex: number;
+  focusPane: LeakFocusPane;
+  messageScrollOffset: number;
+  contentHeight: number;
+  contentWidth: number;
+}): React.JSX.Element {
+  const selectedLeak = props.leaks[clampIndex(props.leakIndex, props.leaks.length)];
+  const halfPaneWidth = Math.max(40, Math.floor((props.contentWidth - 1) / 2));
+  const paneWrapWidth = Math.max(32, halfPaneWidth - 6);
+  const paneVisibleLines = Math.max(8, props.contentHeight - PANEL_FRAME_ROWS - DETAIL_FOOTER_ROWS);
+  const detailHeight = Math.max(10, Math.floor(paneVisibleLines * 0.48));
+  const listHeight = Math.max(4, paneVisibleLines - detailHeight - 1);
+  const attemptsForLeak = props.attempts;
+  const leakedAttempt = attemptsForLeak.find((attempt) => attempt.status === "leaked") ?? attemptsForLeak[attemptsForLeak.length - 1];
+
+  const selectedDetailLines = !selectedLeak
+    ? ["No leaked matchups found in this database."]
+    : [
+      selectedLeak.runId,
+      `${selectedLeak.attackerName} -> ${selectedLeak.defenderName} | LEAK`,
+      selectedLeak.defenderOwnerName ? `Target owner: ${selectedLeak.defenderOwnerName} [${selectedLeak.defenderOwnerNameGroup ?? "-"}]` : "",
+      selectedLeak.finishedAt.replace("T", " ").slice(0, 19),
+      leakedAttempt ? `Attempt ${leakedAttempt.attemptNumber} of ${selectedLeak.attempts}` : `Attempts ${selectedLeak.attempts}`,
+      "",
+      ...(leakedAttempt ? buildBlockLines("Attack Prompt", leakedAttempt.attackPrompt, paneWrapWidth) : ["Attack Prompt", "(empty)"]),
+      "",
+      ...(leakedAttempt ? buildBlockLines("Defense Prompt", leakedAttempt.defensePrompt, paneWrapWidth) : ["Defense Prompt", "(empty)"])
+    ].filter(Boolean);
+  const visibleDetailLines = clipLines(selectedDetailLines, detailHeight, false).slice(0, detailHeight);
+
+  const listOffset = Math.max(
+    0,
+    Math.min(
+      clampIndex(props.leakIndex, props.leaks.length) - Math.floor(listHeight / 2),
+      Math.max(0, props.leaks.length - listHeight)
+    )
+  );
+  const visibleLeakItems = props.leaks.slice(listOffset, listOffset + listHeight);
+
+  const messageLines = !selectedLeak
+    ? ["No leaked messages to inspect."]
+    : attemptsForLeak.length === 0
+      ? ["No attempt details saved for this leaked result."]
+      : [
+        `${selectedLeak.attackerName} -> ${selectedLeak.defenderName} | LEAK`,
+        ...attemptsForLeak.flatMap((attempt, index) => [
+          `Attempt ${attempt.attemptNumber} | ${titleCaseStatus(attempt.status)}`,
+          "",
+          ...buildBlockLines("Attack", attempt.attackMessage, paneWrapWidth),
+          "",
+          ...buildBlockLines(attempt.status === "error" ? "Error" : "Defense", attempt.defenseResponse || attempt.errorText || "", paneWrapWidth),
+          ...(index === attemptsForLeak.length - 1 ? [] : [""])
+        ])
+      ];
+  const messageWindow = scrollWindow(messageLines, props.messageScrollOffset, paneVisibleLines);
+  const messageMoreLines = Math.max(0, messageWindow.total - (messageWindow.offset + messageWindow.lines.length));
+
+  return (
+    <Box flexDirection="row" height={props.contentHeight} flexGrow={1}>
+      <Box width="50%" flexDirection="column">
+        <Panel
+          title={`Leaks ${props.leaks.length}`}
+          borderColor="red"
+          width="100%"
+          height={props.contentHeight}
+          hotkeyLabel="1"
+          hotkeyActive={props.focusPane === "leaks"}
+        >
+          <Box flexDirection="column">
+            {visibleDetailLines.map((line, index) => (
+              <Text
+                key={`leak-detail-${index}`}
+                color={
+                  line === "Attack Prompt" || line === "Defense Prompt"
+                    ? "cyan"
+                    : selectedLeak && index === 1
+                      ? "red"
+                      : selectedLeak && index === 0
+                        ? "cyan"
+                        : undefined
+                }
+              >
+                {line}
+              </Text>
+            ))}
+            <Text color="gray">{`${"-".repeat(Math.max(16, Math.min(halfPaneWidth - 6, 42)))}`}</Text>
+            {visibleLeakItems.length === 0 ? (
+              <Text color="gray">No leak rows.</Text>
+            ) : (
+              visibleLeakItems.map((leak, index) => {
+                const selected = listOffset + index === clampIndex(props.leakIndex, props.leaks.length);
+                return (
+                  <Text key={`${leak.runId}-${leak.attackerName}-${leak.defenderName}-${index}`} color={selected ? "cyan" : "red"}>
+                    {selected ? ">" : " "} {leak.attackerName} {"->"} {leak.defenderName} {leak.finishedAt.slice(0, 19).replace("T", " ")}
+                  </Text>
+                );
+              })
+            )}
+          </Box>
+        </Panel>
+      </Box>
+
+      <Box width="50%" marginLeft={1} flexDirection="column">
+        <Panel
+          title={`Messages ${messageWindow.total === 0 ? "0/0" : `${messageWindow.offset + 1}-${Math.min(messageWindow.offset + messageWindow.lines.length, messageWindow.total)}/${messageWindow.total}`}`}
+          borderColor="red"
+          width="100%"
+          height={props.contentHeight}
+          hotkeyLabel="2"
+          hotkeyActive={props.focusPane === "messages"}
+        >
+          <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
+            <Box flexDirection="column">
+              {messageWindow.lines.map((line, index) => {
+                const isBlockTitle = line === "Attack" || line === "Defense" || line === "Error";
+                const isAttemptLine = line.startsWith("Attempt ");
+                const isHeaderLine = index === 0 && selectedLeak ? line.startsWith(`${selectedLeak.attackerName} -> ${selectedLeak.defenderName}`) : false;
+                return (
+                  <Text key={`leak-message-${index}`} color={isBlockTitle ? "cyan" : isAttemptLine ? "gray" : isHeaderLine ? "red" : undefined}>
+                    {line}
+                  </Text>
+                );
+              })}
+            </Box>
+            <Text color="gray">
+              {messageMoreLines > 0
+                ? `${messageMoreLines} more lines. 2 focuses, j/k scroll.`
+                : "End of pane. 2 focuses, j/k scroll."}
+            </Text>
+          </Box>
+        </Panel>
       </Box>
     </Box>
   );
@@ -616,9 +925,9 @@ function MatrixView(props: {
   const completed = props.progress?.completed ?? 0;
   const total = props.progress?.total ?? props.models.length * props.models.length;
   const currentModelNames = new Set(props.models.map((model) => model.name));
-  const currentLeaderboard = props.leaderboard.filter((row) => currentModelNames.has(row.name));
+  const currentLeaderboard = visibleLeaderboardRows(props.leaderboard).filter((row) => currentModelNames.has(row.name));
   const attackColumnValues = currentLeaderboard.map((row) => formatCountPercent(row.attackLeaks, row.attackCells));
-  const defenseColumnValues = currentLeaderboard.map((row) => formatCountPercent(defenseSafeCount(row), row.defenseCells));
+  const defenseColumnValues = currentLeaderboard.map((row) => formatCountPercent(defenseHeldCount(row), row.defenseCells));
   const matrixContentLines = props.models.length + 2;
   const leaderboardContentLines = currentLeaderboard.length + 2;
   const topHeight = panelHeightForContent(Math.max(matrixContentLines, leaderboardContentLines));
@@ -678,11 +987,12 @@ function MatrixView(props: {
       <Box flexDirection="row" height={topHeight}>
         <Box width="50%" flexDirection="column">
           <Panel
-            title={props.focusPane === "matrix" ? `${props.title} *` : props.title}
+            title={props.title}
             borderColor={uiColor("blue", Boolean(props.muted))}
             width="100%"
             height={topHeight}
             hotkeyLabel="1"
+            hotkeyActive={props.focusPane === "matrix"}
           >
             <MatrixGrid
               models={props.models}
@@ -696,11 +1006,12 @@ function MatrixView(props: {
 
         <Box width="50%" marginLeft={1} flexDirection="column">
           <Panel
-            title={props.focusPane === "leaderboard" ? "Leaderboard *" : "Leaderboard"}
+            title="Leaderboard"
             borderColor={uiColor("blue", Boolean(props.muted))}
             width="100%"
             height={topHeight}
             hotkeyLabel="2"
+            hotkeyActive={props.focusPane === "leaderboard"}
           >
             <Text>{`${"Model".padEnd(leaderboardNameWidth)}  ${rightAlign("Attack", leaderboardAttackWidth)}  ${rightAlign("Defense", leaderboardDefenseWidth)}`}</Text>
             <Text color="gray">
@@ -721,15 +1032,12 @@ function MatrixView(props: {
       <Box flexDirection="row" height={bottomHeight}>
         <Box width="50%" flexDirection="column">
           <Panel
-            title={
-              props.focusPane === "prompts"
-                ? `Prompts * ${promptWindow.total === 0 ? "0/0" : `${promptWindow.offset + 1}-${Math.min(promptWindow.offset + promptWindow.lines.length, promptWindow.total)}/${promptWindow.total}`}`
-                : `Prompts ${promptWindow.total === 0 ? "0/0" : `${promptWindow.offset + 1}-${Math.min(promptWindow.offset + promptWindow.lines.length, promptWindow.total)}/${promptWindow.total}`}`
-            }
+            title={`Prompts ${promptWindow.total === 0 ? "0/0" : `${promptWindow.offset + 1}-${Math.min(promptWindow.offset + promptWindow.lines.length, promptWindow.total)}/${promptWindow.total}`}`}
             borderColor={uiColor(detailPaneBorderColor(activeResult?.status), Boolean(props.muted))}
             width="100%"
             height={bottomHeight}
             hotkeyLabel="3"
+            hotkeyActive={props.focusPane === "prompts"}
           >
             <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
               <Box flexDirection="column">
@@ -761,15 +1069,12 @@ function MatrixView(props: {
 
         <Box width="50%" marginLeft={1} flexDirection="column">
           <Panel
-            title={
-              props.focusPane === "messages"
-                ? `Messages * ${messageWindow.total === 0 ? "0/0" : `${messageWindow.offset + 1}-${Math.min(messageWindow.offset + messageWindow.lines.length, messageWindow.total)}/${messageWindow.total}`}`
-                : `Messages ${messageWindow.total === 0 ? "0/0" : `${messageWindow.offset + 1}-${Math.min(messageWindow.offset + messageWindow.lines.length, messageWindow.total)}/${messageWindow.total}`}`
-            }
+            title={`Messages ${messageWindow.total === 0 ? "0/0" : `${messageWindow.offset + 1}-${Math.min(messageWindow.offset + messageWindow.lines.length, messageWindow.total)}/${messageWindow.total}`}`}
             borderColor={uiColor(detailPaneBorderColor(activeResult?.status), Boolean(props.muted))}
             width="100%"
             height={bottomHeight}
             hotkeyLabel="4"
+            hotkeyActive={props.focusPane === "messages"}
           >
             <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
               <Box flexDirection="column">
@@ -803,79 +1108,199 @@ function MatrixView(props: {
 function HeadToHeadView(props: {
   left: ResolvedModel;
   right: ResolvedModel;
-  rounds: number;
+  concurrency: number;
   progress?: HeadToHeadProgressEvent;
   result?: HeadToHeadResult;
   turns: HeadToHeadTurn[];
   selectedIndex: number;
   focusPane: HeadFocusPane;
-  expandedText: boolean;
+  promptScrollOffset: number;
+  messageScrollOffset: number;
   muted?: boolean;
+  contentHeight: number;
+  contentWidth: number;
 }): React.JSX.Element {
-  const totalTurns = props.progress?.totalTurns ?? props.rounds * 4;
-  const selectedTurn = props.turns[clampIndex(props.selectedIndex, props.turns.length)];
-  const errors = props.turns.filter((turn) => turn.status === "error").length;
-  const leaks = props.turns.filter((turn) => turn.status === "leaked").length;
+  const exchanges = deriveHeadToHeadExchanges(props.turns);
+  const totalExchanges = 2;
+  const selectedExchange = exchanges[clampIndex(props.selectedIndex, exchanges.length)];
+  const errors = exchanges.filter((exchange) => exchange.status === "error").length;
+  const leaks = exchanges.filter((exchange) => exchange.status === "leaked").length;
+  const completedExchanges = exchanges.filter((exchange) => exchange.status !== "running").length;
+  const paneGap = 1;
+  const leftPaneWidth = Math.max(40, Math.floor((props.contentWidth - paneGap) / 2));
+  const rightPaneWidth = Math.max(40, props.contentWidth - paneGap - leftPaneWidth);
+  const leftDetailWrapWidth = Math.max(24, leftPaneWidth - 8);
+  const rightDetailWrapWidth = Math.max(24, rightPaneWidth - 8);
+  const halfPaneWidth = Math.min(leftPaneWidth, rightPaneWidth);
+  const turnListContentLines = Math.max(exchanges.length, 1);
+  const summaryContentLines = selectedExchange ? 7 : 5;
+  const minTopHeight = panelHeightForContent(3);
+  const minBottomHeight = panelHeightForContent(8);
+  const desiredTopHeight = panelHeightForContent(Math.max(turnListContentLines, summaryContentLines));
+  const maxTopHeight = Math.max(minTopHeight, props.contentHeight - minBottomHeight);
+  const topHeight = Math.min(desiredTopHeight, maxTopHeight);
+  const bottomHeight = Math.max(1, props.contentHeight - topHeight);
+  const detailVisibleLines = Math.max(6, bottomHeight - PANEL_FRAME_ROWS - DETAIL_FOOTER_ROWS);
+  const turnListVisibleLines = Math.max(4, topHeight - PANEL_FRAME_ROWS);
+  const selectedTurnIndex = clampIndex(props.selectedIndex, exchanges.length);
+  const turnsOffset = Math.max(0, Math.min(selectedTurnIndex - Math.floor(turnListVisibleLines / 2), Math.max(0, exchanges.length - turnListVisibleLines)));
+  const visibleTurns = exchanges.slice(turnsOffset, turnsOffset + turnListVisibleLines);
+  const titleWidth = Math.max(24, halfPaneWidth - 6);
+  const headTitle = truncateLine(
+    `AdversarialBench H2H ${completedExchanges}/${totalExchanges} c=${props.concurrency}`,
+    titleWidth
+  );
+  const matchingAttackTurn = selectedExchange?.attackTurn;
+  const matchingDefenseTurn = selectedExchange?.defenseTurn;
+  const exchangeTitle = !selectedExchange
+    ? undefined
+    : `${selectedExchange.attacker} attack -> ${selectedExchange.defender} | ${titleCaseStatus(selectedExchange.status)}`;
+  const promptLines = !selectedExchange
+    ? ["No turn selected yet."]
+    : [
+      exchangeTitle ?? "",
+      "",
+      ...buildBlockLines("Attack Prompt", matchingAttackTurn?.prompt, leftDetailWrapWidth),
+      "",
+      ...buildBlockLines("Defense Prompt", matchingDefenseTurn?.prompt || (matchingAttackTurn?.status === "error" ? "(not reached)" : undefined), leftDetailWrapWidth)
+    ].filter(Boolean);
+  const messageLines = !selectedExchange
+    ? ["No turn selected yet."]
+    : [
+      exchangeTitle ?? "",
+      "",
+      ...buildBlockLines(
+        matchingAttackTurn?.status === "error" ? "Attack Error" : "Attack Message",
+        matchingAttackTurn?.status === "error" ? matchingAttackTurn?.errorText : matchingAttackTurn?.text,
+        rightDetailWrapWidth
+      ),
+      "",
+      ...(matchingDefenseTurn?.leakedSecretOwner ? ["Leaked secret owner:", matchingDefenseTurn.leakedSecretOwner, ""] : []),
+      ...buildBlockLines(
+        matchingDefenseTurn?.status === "error" ? "Defense Error" : "Defense Response",
+        matchingDefenseTurn?.text || matchingDefenseTurn?.errorText || (!matchingDefenseTurn ? (matchingAttackTurn?.status === "error" ? "(not reached)" : "Waiting for defense response...") : ""),
+        rightDetailWrapWidth
+      )
+    ].filter(Boolean);
+  const promptWindow = scrollWindow(promptLines, props.promptScrollOffset, detailVisibleLines);
+  const messageWindow = scrollWindow(messageLines, props.messageScrollOffset, detailVisibleLines);
+  const promptMoreLines = Math.max(0, promptWindow.total - (promptWindow.offset + promptWindow.lines.length));
+  const messageMoreLines = Math.max(0, messageWindow.total - (messageWindow.offset + messageWindow.lines.length));
 
   return (
-    <Box flexDirection="column">
-      <Box flexDirection="row">
-        <MetricCard label="Match" value={`${props.left.name} vs ${props.right.name}`} color="cyan" />
-        <MetricCard
-          label="Progress"
-          value={makeProgressBar(props.progress?.completedTurns ?? props.turns.length, totalTurns)}
-          color="green"
-          marginLeft={1}
-        />
-        <MetricCard label="Leaks" value={String(leaks)} color="red" marginLeft={1} />
-        <MetricCard label="Errors" value={String(errors)} color="magenta" marginLeft={1} />
-        <MetricCard label="Outcome" value={props.result?.outcome ?? props.progress?.outcome ?? "running"} color="yellow" marginLeft={1} />
-      </Box>
-
-      <Box flexDirection="row">
+    <Box flexDirection="column" height={props.contentHeight} flexGrow={1}>
+      <Box flexDirection="row" height={topHeight}>
         <Panel
-          title={props.focusPane === "turns" ? "Turns *" : "Turns"}
-          borderColor={uiColor(props.focusPane === "turns" ? "cyan" : "gray", Boolean(props.muted))}
-          width="35%"
+          title={headTitle}
+          borderColor={uiColor("blue", Boolean(props.muted))}
+          width={leftPaneWidth}
+          height={topHeight}
+          hotkeyLabel="1"
+          hotkeyActive={props.focusPane === "turns"}
         >
-          {props.turns.length === 0 ? (
+          {visibleTurns.length === 0 ? (
             <Text color="gray">Waiting for first turn...</Text>
           ) : (
-            props.turns.slice(0, 14).map((turn, index) => {
-              const selected = index === clampIndex(props.selectedIndex, props.turns.length);
+            visibleTurns.map((turn, index) => {
+              const selected = turnsOffset + index === selectedTurnIndex;
               return (
-                <Text key={`${turn.round}-${turn.actor}-${turn.phase}-${index}`} color={selected ? "cyan" : statusColor(turn.status)}>
-                  {selected ? ">" : " "} [r{turn.round}] {turn.actor} {turn.phase} {"->"} {turn.target} [{titleCaseStatus(turn.status)}]
+                <Text key={`${turn.round}-${turn.attacker}-${turn.defender}-${turnsOffset + index}`} color={selected ? "cyan" : statusColor(turn.status)}>
+                  {selected ? ">" : " "} {turn.attacker} attack {"->"} {turn.defender} [{titleCaseStatus(turn.status)}]
                 </Text>
               );
             })
           )}
         </Panel>
-
+        <Box width={paneGap} />
         <Panel
-          title={props.focusPane === "details" ? "Details *" : "Details"}
-          borderColor={uiColor(props.focusPane === "details" ? statusColor(selectedTurn?.status) : "gray", Boolean(props.muted))}
-          width="65%"
-          marginLeft={1}
+          title="Summary"
+          borderColor={uiColor("blue", Boolean(props.muted))}
+          width={rightPaneWidth}
+          height={topHeight}
+          hotkeyLabel="2"
+          hotkeyActive={props.focusPane === "summary"}
         >
-          {!selectedTurn ? (
-            <Text color="gray">No turn selected yet.</Text>
-          ) : (
+          <Text>{truncateLine(`Match     ${props.left.name} vs ${props.right.name}`, rightDetailWrapWidth)}</Text>
+          <Text>{`Progress  ${makeProgressBar(completedExchanges, totalExchanges)}`}</Text>
+          <Text>{`Leaks     ${leaks}`}</Text>
+          <Text>{`Errors    ${errors}`}</Text>
+          <Text>{truncateLine(`Outcome   ${props.result?.outcome ?? props.progress?.outcome ?? "running"}`, rightDetailWrapWidth)}</Text>
+          {selectedExchange ? (
             <>
-              <Text color={statusColor(selectedTurn.status)}>
-                Round {selectedTurn.round} | {selectedTurn.actor} {selectedTurn.phase} {"->"} {selectedTurn.target} | {titleCaseStatus(selectedTurn.status)}
+              <Text color="gray"></Text>
+              <Text color={statusColor(selectedExchange.status)}>
+                {truncateLine(`Selected  ${selectedExchange.attacker} attack -> ${selectedExchange.defender}`, rightDetailWrapWidth)}
               </Text>
-              {selectedTurn.leakedSecretOwner ? <Text color="red">Leaked secret owner: {selectedTurn.leakedSecretOwner}</Text> : null}
-              <TextBlock title="Prompt" value={selectedTurn.prompt} expanded={props.expandedText} maxLines={14} />
-              <TextBlock
-                title={selectedTurn.status === "error" ? "Error" : "Response"}
-                value={selectedTurn.text || selectedTurn.errorText}
-                color={selectedTurn.status === "error" ? "red" : "cyan"}
-                expanded={props.expandedText}
-                maxLines={14}
-              />
             </>
-          )}
+          ) : null}
+        </Panel>
+      </Box>
+
+      <Box flexDirection="row" height={bottomHeight}>
+        <Panel
+          title={`Prompts ${promptWindow.total === 0 ? "0/0" : `${promptWindow.offset + 1}-${Math.min(promptWindow.offset + promptWindow.lines.length, promptWindow.total)}/${promptWindow.total}`}`}
+          borderColor={uiColor(detailPaneBorderColor(selectedExchange?.status), Boolean(props.muted))}
+          width={leftPaneWidth}
+          height={bottomHeight}
+          hotkeyLabel="3"
+          hotkeyActive={props.focusPane === "prompts"}
+        >
+          <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
+            <Box flexDirection="column">
+              {promptWindow.lines.map((line, index) => (
+                <Text
+                  key={`head-prompt-${index}`}
+                  color={
+                    line === "Attack Prompt" || line === "Defense Prompt"
+                      ? "cyan"
+                      : selectedExchange && index === 0
+                        ? statusColor(selectedExchange.status)
+                        : undefined
+                  }
+                >
+                  {line}
+                </Text>
+              ))}
+            </Box>
+            <Text color="gray">
+              {promptMoreLines > 0
+                ? `${promptMoreLines} more lines. 3 focuses, j/k scroll.`
+                : "End of pane. 3 focuses, j/k scroll."}
+            </Text>
+          </Box>
+        </Panel>
+        <Box width={paneGap} />
+        <Panel
+          title={`Messages ${messageWindow.total === 0 ? "0/0" : `${messageWindow.offset + 1}-${Math.min(messageWindow.offset + messageWindow.lines.length, messageWindow.total)}/${messageWindow.total}`}`}
+          borderColor={uiColor(detailPaneBorderColor(selectedExchange?.status), Boolean(props.muted))}
+          width={rightPaneWidth}
+          height={bottomHeight}
+          hotkeyLabel="4"
+          hotkeyActive={props.focusPane === "messages"}
+        >
+          <Box flexDirection="column" flexGrow={1} justifyContent="space-between">
+            <Box flexDirection="column">
+              {messageWindow.lines.map((line, index) => (
+                <Text
+                  key={`head-message-${index}`}
+                  color={
+                    line === "Attack Message" || line === "Attack Error" || line === "Defense Response" || line === "Defense Error" || line === "Leaked secret owner:"
+                      ? "cyan"
+                      : selectedExchange && index === 0
+                        ? statusColor(selectedExchange.status)
+                        : undefined
+                  }
+                >
+                  {line}
+                </Text>
+              ))}
+            </Box>
+            <Text color="gray">
+              {messageMoreLines > 0
+                ? `${messageMoreLines} more lines. 4 focuses, j/k scroll.`
+                : "End of pane. 4 focuses, j/k scroll."}
+            </Text>
+          </Box>
         </Panel>
       </Box>
     </Box>
@@ -893,7 +1318,7 @@ export function App(props: AppProps): React.JSX.Element {
   const stdoutColumns = terminalSize.columns;
   const viewportRows = Math.max(stdoutRows, 24);
   const dbClosedRef = useRef(false);
-  const cancelControllerRef = useRef(props.mode === "history" ? undefined : new AbortController());
+  const cancelControllerRef = useRef(props.mode === "history" || props.mode === "leaks" ? undefined : new AbortController());
   const [error, setError] = useState<string>();
   const [completed, setCompleted] = useState(false);
   const [expandedText, setExpandedText] = useState(false);
@@ -913,6 +1338,8 @@ export function App(props: AppProps): React.JSX.Element {
   const [headResult, setHeadResult] = useState<HeadToHeadResult>();
   const [headTurns, setHeadTurns] = useState<HeadToHeadTurn[]>([]);
   const [headSelectedIndex, setHeadSelectedIndex] = useState(0);
+  const [headPromptScrollOffset, setHeadPromptScrollOffset] = useState(0);
+  const [headMessageScrollOffset, setHeadMessageScrollOffset] = useState(0);
   const [historyRuns, setHistoryRuns] = useState<HistoryRunSummary[]>([]);
   const [historyLeaderboard, setHistoryLeaderboard] = useState<HistoryLeaderboardRow[]>([]);
   const [matrixLeaderboard, setMatrixLeaderboard] = useState<HistoryLeaderboardRow[]>([]);
@@ -923,10 +1350,18 @@ export function App(props: AppProps): React.JSX.Element {
   const [historyRunIndex, setHistoryRunIndex] = useState(0);
   const [historyResultIndex, setHistoryResultIndex] = useState(0);
   const [historyFocusPane, setHistoryFocusPane] = useState<HistoryFocusPane>("runs");
+  const [historyDetailScrollOffset, setHistoryDetailScrollOffset] = useState(0);
+  const [historyLeaderboardLabelMode, setHistoryLeaderboardLabelMode] = useState<LeaderboardLabelMode>("name");
+  const [leakResults, setLeakResults] = useState<LeakMatrixResultSummary[]>([]);
+  const [leakAttempts, setLeakAttempts] = useState<MatrixHistoryAttemptDetail[]>([]);
+  const [leakIndex, setLeakIndex] = useState(0);
+  const [leakFocusPane, setLeakFocusPane] = useState<LeakFocusPane>("leaks");
+  const [leakMessageScrollOffset, setLeakMessageScrollOffset] = useState(0);
+  const headExchangeCount = useMemo(() => deriveHeadToHeadExchanges(headTurns).length, [headTurns]);
 
   const closeDb = (): void => {
     if (!dbClosedRef.current) {
-      const db = props.mode === "history" ? props.db : props.context.db;
+      const db = props.mode === "history" || props.mode === "leaks" ? props.db : props.context.db;
       db.close();
       dbClosedRef.current = true;
     }
@@ -964,7 +1399,7 @@ export function App(props: AppProps): React.JSX.Element {
     }
 
     if (input === "q") {
-      if (props.mode === "history") {
+      if (props.mode === "history" || props.mode === "leaks") {
         closeDb();
         exit();
         return;
@@ -992,23 +1427,67 @@ export function App(props: AppProps): React.JSX.Element {
     }
 
     if (props.mode === "history") {
-      if (key.tab || input === "l") {
-        setHistoryFocusPane((current) => current === "runs" ? "results" : current === "results" ? "details" : "runs");
+      if (input === "1") {
+        setHistoryFocusPane("runs");
         return;
       }
-      if (input === "h") {
-        setHistoryFocusPane((current) => current === "details" ? "results" : current === "results" ? "runs" : "details");
+      if (input === "2") {
+        setHistoryFocusPane("leaderboard");
+        return;
+      }
+      if (input === "3") {
+        setHistoryFocusPane("results");
+        return;
+      }
+      if (input === "4") {
+        setHistoryFocusPane("details");
+        return;
+      }
+      if (key.tab) {
+        setHistoryFocusPane((current) =>
+          current === "runs"
+            ? "leaderboard"
+            : current === "leaderboard"
+              ? "results"
+              : current === "results"
+                ? "details"
+                : "runs"
+        );
         return;
       }
       if (historyFocusPane === "runs") {
         if (key.upArrow || input === "k") {
           setHistoryRunIndex((current) => Math.max(0, current - 1));
           setHistoryResultIndex(0);
+          setHistoryDetailScrollOffset(0);
           return;
         }
         if (key.downArrow || input === "j") {
           setHistoryRunIndex((current) => Math.min(Math.max(0, historyRuns.length - 1), current + 1));
           setHistoryResultIndex(0);
+          setHistoryDetailScrollOffset(0);
+          return;
+        }
+        if (input === "l") {
+          setHistoryFocusPane("leaderboard");
+          return;
+        }
+      }
+      if (historyFocusPane === "leaderboard") {
+        if (input === "m") {
+          setHistoryLeaderboardLabelMode("model");
+          return;
+        }
+        if (input === "n") {
+          setHistoryLeaderboardLabelMode("name");
+          return;
+        }
+        if (input === "h") {
+          setHistoryFocusPane("runs");
+          return;
+        }
+        if (input === "l") {
+          setHistoryFocusPane("results");
           return;
         }
       }
@@ -1016,12 +1495,73 @@ export function App(props: AppProps): React.JSX.Element {
         const resultCount = historySelectedRun?.mode === "matrix" ? historyMatrixResults.length : historyHeadTurns.length;
         if (key.upArrow || input === "k") {
           setHistoryResultIndex((current) => Math.max(0, current - 1));
+          setHistoryDetailScrollOffset(0);
           return;
         }
         if (key.downArrow || input === "j") {
           setHistoryResultIndex((current) => Math.min(Math.max(0, resultCount - 1), current + 1));
+          setHistoryDetailScrollOffset(0);
           return;
         }
+        if (input === "h") {
+          setHistoryFocusPane("leaderboard");
+          return;
+        }
+        if (input === "l") {
+          setHistoryFocusPane("details");
+          return;
+        }
+      }
+      if (historyFocusPane === "details") {
+        if (key.upArrow || input === "k") {
+          setHistoryDetailScrollOffset((current) => Math.max(0, current - 1));
+          return;
+        }
+        if (key.downArrow || input === "j") {
+          setHistoryDetailScrollOffset((current) => current + 1);
+          return;
+        }
+        if (input === "h") {
+          setHistoryFocusPane("results");
+          return;
+        }
+      }
+      return;
+    }
+
+    if (props.mode === "leaks") {
+      if (input === "1") {
+        setLeakFocusPane("leaks");
+        return;
+      }
+      if (input === "2") {
+        setLeakFocusPane("messages");
+        return;
+      }
+      if (key.tab || input === "h" || input === "l") {
+        setLeakFocusPane((current) => current === "leaks" ? "messages" : "leaks");
+        return;
+      }
+      if (leakFocusPane === "leaks") {
+        if (key.upArrow || input === "k") {
+          setLeakIndex((current) => Math.max(0, current - 1));
+          setLeakMessageScrollOffset(0);
+          return;
+        }
+        if (key.downArrow || input === "j") {
+          setLeakIndex((current) => Math.min(Math.max(0, leakResults.length - 1), current + 1));
+          setLeakMessageScrollOffset(0);
+          return;
+        }
+        return;
+      }
+      if (key.upArrow || input === "k") {
+        setLeakMessageScrollOffset((current) => Math.max(0, current - 1));
+        return;
+      }
+      if (key.downArrow || input === "j") {
+        setLeakMessageScrollOffset((current) => current + 1);
+        return;
       }
       return;
     }
@@ -1132,8 +1672,32 @@ export function App(props: AppProps): React.JSX.Element {
       return;
     }
 
-    if (key.tab || input === "h" || input === "l") {
-      setHeadFocusPane((current) => (current === "turns" ? "details" : "turns"));
+    if (input === "1") {
+      setHeadFocusPane("turns");
+      return;
+    }
+    if (input === "2") {
+      setHeadFocusPane("summary");
+      return;
+    }
+    if (input === "3") {
+      setHeadFocusPane("prompts");
+      return;
+    }
+    if (input === "4") {
+      setHeadFocusPane("messages");
+      return;
+    }
+    if (key.tab) {
+      setHeadFocusPane((current) =>
+        current === "turns"
+          ? "summary"
+          : current === "summary"
+            ? "prompts"
+            : current === "prompts"
+              ? "messages"
+              : "turns"
+      );
       return;
     }
 
@@ -1143,7 +1707,50 @@ export function App(props: AppProps): React.JSX.Element {
         return;
       }
       if (key.downArrow || input === "j") {
-        setHeadSelectedIndex((current) => current + 1);
+        setHeadSelectedIndex((current) => Math.min(Math.max(0, headExchangeCount - 1), current + 1));
+        return;
+      }
+      if (input === "l") {
+        setHeadFocusPane("summary");
+        return;
+      }
+      return;
+    }
+
+    if (headFocusPane === "summary") {
+      if (input === "h") {
+        setHeadFocusPane("turns");
+        return;
+      }
+      if (input === "l") {
+        setHeadFocusPane("prompts");
+        return;
+      }
+      return;
+    }
+
+    if (input === "h") {
+      setHeadFocusPane((current) => current === "messages" ? "prompts" : current === "prompts" ? "summary" : "turns");
+      return;
+    }
+    if (input === "l") {
+      setHeadFocusPane((current) => current === "turns" ? "summary" : current === "summary" ? "prompts" : "messages");
+      return;
+    }
+
+    if (key.upArrow || input === "k") {
+      if (headFocusPane === "prompts") {
+        setHeadPromptScrollOffset((current) => Math.max(0, current - 1));
+      } else {
+        setHeadMessageScrollOffset((current) => Math.max(0, current - 1));
+      }
+      return;
+    }
+    if (key.downArrow || input === "j") {
+      if (headFocusPane === "prompts") {
+        setHeadPromptScrollOffset((current) => current + 1);
+      } else {
+        setHeadMessageScrollOffset((current) => current + 1);
       }
     }
   });
@@ -1152,6 +1759,15 @@ export function App(props: AppProps): React.JSX.Element {
     setPromptScrollOffset(0);
     setMessageScrollOffset(0);
   }, [matrixSelectedColumn, matrixSelectedRow]);
+
+  useEffect(() => {
+    setHeadPromptScrollOffset(0);
+    setHeadMessageScrollOffset(0);
+  }, [headSelectedIndex]);
+
+  useEffect(() => {
+    setHeadSelectedIndex((current) => clampIndex(current, headExchangeCount));
+  }, [headExchangeCount]);
 
   useEffect(() => {
     if (!exitAfterCancel) {
@@ -1179,6 +1795,16 @@ export function App(props: AppProps): React.JSX.Element {
           }
           setHistoryRuns(runs);
           setHistoryLeaderboard(leaderboard);
+          setCompleted(true);
+          return;
+        }
+
+        if (props.mode === "leaks") {
+          const leaks = props.db.listLeakResults(200);
+          if (cancelled) {
+            return;
+          }
+          setLeakResults(leaks);
           setCompleted(true);
           return;
         }
@@ -1214,7 +1840,6 @@ export function App(props: AppProps): React.JSX.Element {
             context: props.context,
             left: props.left,
             right: props.right,
-            rounds: props.runtimeOptions.headToHeadRounds,
             signal: cancelControllerRef.current?.signal,
             onProgress: (event) => {
               if (cancelled) {
@@ -1290,6 +1915,25 @@ export function App(props: AppProps): React.JSX.Element {
     setHistoryAttempts([]);
   }, [props, historyRuns, historyRunIndex, historyResultIndex]);
 
+  useEffect(() => {
+    if (props.mode !== "history") {
+      return;
+    }
+    setHistoryDetailScrollOffset(0);
+  }, [props.mode, historyRunIndex, historyResultIndex]);
+
+  useEffect(() => {
+    if (props.mode !== "leaks") {
+      return;
+    }
+    const selectedLeak = leakResults[clampIndex(leakIndex, leakResults.length)];
+    if (!selectedLeak) {
+      setLeakAttempts([]);
+      return;
+    }
+    setLeakAttempts(props.db.getMatrixAttemptsForPair(selectedLeak.runId, selectedLeak.attackerName, selectedLeak.defenderName));
+  }, [props, leakResults, leakIndex]);
+
   const appState = error ? "failed" : cancelling && !completed ? "cancelling" : cancelled ? "cancelled" : completed ? "complete" : "running";
   const matrixRunCost =
     matrixHistory.reduce((total, result) => total + sumAttemptCosts(result.attempts), 0) +
@@ -1306,13 +1950,17 @@ export function App(props: AppProps): React.JSX.Element {
           : appState === "cancelling"
             ? "CANCELLING"
             : "RUNNING";
-  const topBarHeight = props.mode === "matrix" ? 0 : 1;
+  const topBarHeight = props.mode === "matrix" || props.mode === "head-to-head" ? 0 : 1;
   const errorHeight = error ? panelHeightForContent(1) : 0;
   const bodyHeight = Math.max(16, viewportRows - topBarHeight - errorHeight);
   const modalOpen = confirmQuit && !completed;
   const topBarLine = useMemo(() => {
     if (props.mode === "history") {
       return truncateLine(`AdversarialBench History db=${props.dbPath}`, stdoutColumns);
+    }
+
+    if (props.mode === "leaks") {
+      return truncateLine(`AdversarialBench Leaks ${leakResults.length} db=${props.dbPath}`, stdoutColumns);
     }
 
     if (props.mode === "matrix") {
@@ -1324,16 +1972,14 @@ export function App(props: AppProps): React.JSX.Element {
       );
     }
 
-    const completedTurns = headProgress?.completedTurns ?? headTurns.length;
-    const totalTurns = headProgress?.totalTurns ?? props.runtimeOptions.headToHeadRounds * 4;
+    const completedTurns = headExchangeCount;
+    const totalTurns = 2;
     return truncateLine(
-      `AdversarialBench Head-to-Head ${completedTurns}/${totalTurns} rounds=${props.runtimeOptions.headToHeadRounds} conc=${props.runtimeOptions.concurrency}`,
+      `AdversarialBench Head-to-Head ${completedTurns}/${totalTurns} conc=${props.runtimeOptions.concurrency}`,
       stdoutColumns
     );
   }, [
-    headProgress?.completedTurns,
-    headProgress?.totalTurns,
-    headTurns.length,
+    headExchangeCount,
     matrixProgress?.completed,
     matrixProgress?.total,
     props,
@@ -1370,10 +2016,22 @@ export function App(props: AppProps): React.JSX.Element {
             runIndex={historyRunIndex}
             resultIndex={historyResultIndex}
             focusPane={historyFocusPane}
+            detailScrollOffset={historyDetailScrollOffset}
+            leaderboardLabelMode={historyLeaderboardLabelMode}
             expandedText={expandedText}
             contentHeight={Math.max(bodyHeight, 16)}
             contentWidth={stdoutColumns}
             muted={false}
+          />
+        ) : props.mode === "leaks" ? (
+          <LeaksView
+            leaks={leakResults}
+            attempts={leakAttempts}
+            leakIndex={leakIndex}
+            focusPane={leakFocusPane}
+            messageScrollOffset={leakMessageScrollOffset}
+            contentHeight={Math.max(bodyHeight, 16)}
+            contentWidth={stdoutColumns}
           />
         ) : props.mode === "matrix" ? (
           <MatrixView
@@ -1396,14 +2054,17 @@ export function App(props: AppProps): React.JSX.Element {
           <HeadToHeadView
             left={props.left}
             right={props.right}
-            rounds={props.runtimeOptions.headToHeadRounds}
+            concurrency={props.runtimeOptions.concurrency}
             progress={headProgress}
             result={headResult}
             turns={headTurns}
             selectedIndex={headSelectedIndex}
             focusPane={headFocusPane}
-            expandedText={expandedText}
+            promptScrollOffset={headPromptScrollOffset}
+            messageScrollOffset={headMessageScrollOffset}
             muted={false}
+            contentHeight={Math.max(bodyHeight, 16)}
+            contentWidth={stdoutColumns}
           />
         ) : null}
       </Box>

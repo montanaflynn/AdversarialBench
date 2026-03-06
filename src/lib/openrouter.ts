@@ -207,7 +207,7 @@ export async function runOpenRouterPrompt(input: {
           { role: "user", content: input.userPrompt }
         ],
         temperature: input.temperature,
-        max_tokens: input.maxTokens,
+        ...(input.maxTokens > 0 ? { max_tokens: input.maxTokens } : {}),
         usage: {
           include: true
         }

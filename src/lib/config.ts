@@ -2,7 +2,17 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { clampPositiveInteger, createSecret } from "./utils.js";
-import type { BenchmarkConfig, ResolvedModel, RuntimeOptions } from "./types.js";
+import type { BenchmarkConfig, BenchmarkMode, ResolvedModel, RuntimeOptions } from "./types.js";
+
+function normalizeOptionalTokenLimit(value: number | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!Number.isFinite(value) || value < 1) {
+    return 0;
+  }
+  return Math.floor(value);
+}
 
 export async function loadConfig(configPath: string): Promise<{ config: BenchmarkConfig; resolvedPath: string }> {
   const resolvedPath = resolve(configPath);
@@ -35,16 +45,24 @@ export function resolveModels(config: BenchmarkConfig): ResolvedModel[] {
   }));
 }
 
-export function mergeRuntimeOptions(base: RuntimeOptions, config: BenchmarkConfig, providedFlags: Set<string> = new Set()): RuntimeOptions {
+export function mergeRuntimeOptions(
+  mode: BenchmarkMode,
+  base: RuntimeOptions,
+  config: BenchmarkConfig,
+  providedFlags: Set<string> = new Set()
+): RuntimeOptions {
+  const configConcurrency = mode === "head-to-head"
+    ? config.defaults?.headToHeadConcurrency ?? config.defaults?.concurrency
+    : config.defaults?.concurrency;
   return {
     ...base,
     concurrency: providedFlags.has("--concurrency")
       ? clampPositiveInteger(base.concurrency, base.concurrency)
-      : clampPositiveInteger(config.defaults?.concurrency ?? base.concurrency, base.concurrency),
+      : clampPositiveInteger(configConcurrency ?? base.concurrency, base.concurrency),
     temperature: providedFlags.has("--temperature") ? base.temperature : config.defaults?.temperature ?? base.temperature,
     maxTokens: providedFlags.has("--max-tokens")
-      ? clampPositiveInteger(base.maxTokens, base.maxTokens)
-      : clampPositiveInteger(config.defaults?.maxTokens ?? base.maxTokens, base.maxTokens),
+      ? normalizeOptionalTokenLimit(base.maxTokens, base.maxTokens)
+      : normalizeOptionalTokenLimit(config.defaults?.maxTokens, base.maxTokens),
     attackerMessages: providedFlags.has("--attacker-messages")
       ? clampPositiveInteger(base.attackerMessages, base.attackerMessages)
       : clampPositiveInteger(config.defaults?.attackerMessages ?? base.attackerMessages, base.attackerMessages),

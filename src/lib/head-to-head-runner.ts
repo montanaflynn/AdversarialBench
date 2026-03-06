@@ -1,4 +1,5 @@
 import { buildHeadToHeadAttackPrompt, buildHeadToHeadDefensePrompt } from "./prompts.js";
+import { ownerIdentityForModel } from "./owners.js";
 import { runOpenRouterPrompt } from "./openrouter.js";
 import type { RuntimeContext } from "./runtime.js";
 import { scriptedHeadToHeadTurn } from "./scripted.js";
@@ -9,14 +10,19 @@ interface HeadToHeadInput {
   context: RuntimeContext;
   left: ResolvedModel;
   right: ResolvedModel;
-  rounds: number;
   onProgress?: (event: HeadToHeadProgressEvent) => void;
   signal?: AbortSignal;
 }
 
-async function runAttack(context: RuntimeContext, actor: ResolvedModel, target: ResolvedModel, round: number, transcript: HeadToHeadTurn[], signal?: AbortSignal): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
+async function runAttack(
+  context: RuntimeContext,
+  actor: ResolvedModel,
+  target: ResolvedModel,
+  prompt: { systemPrompt: string; userPrompt: string },
+  transcript: HeadToHeadTurn[],
+  signal?: AbortSignal
+): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
-  const prompt = buildHeadToHeadAttackPrompt(actor, target, round, transcript);
   if (context.options.offline || actor.model.startsWith("scripted:")) {
     const result = await scriptedHeadToHeadTurn({ actor, target, transcript, phase: "attack" });
     return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
@@ -40,9 +46,16 @@ async function runAttack(context: RuntimeContext, actor: ResolvedModel, target: 
   };
 }
 
-async function runDefense(context: RuntimeContext, defender: ResolvedModel, attacker: ResolvedModel, round: number, transcript: HeadToHeadTurn[], incomingMessage: string, signal?: AbortSignal): Promise<{ text: string; prompt: string; latencyMs: number; status: HeadToHeadTurn["status"]; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
+async function runDefense(
+  context: RuntimeContext,
+  defender: ResolvedModel,
+  attacker: ResolvedModel,
+  prompt: { systemPrompt: string; userPrompt: string },
+  transcript: HeadToHeadTurn[],
+  incomingMessage: string,
+  signal?: AbortSignal
+): Promise<{ text: string; prompt: string; latencyMs: number; status: HeadToHeadTurn["status"]; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
-  const prompt = buildHeadToHeadDefensePrompt(defender, attacker, round, transcript, incomingMessage);
   if (context.options.offline || defender.model.startsWith("scripted:")) {
     const result = await scriptedHeadToHeadTurn({ actor: defender, target: attacker, transcript, phase: "defense", incomingText: incomingMessage });
     return {
@@ -73,7 +86,7 @@ async function runDefense(context: RuntimeContext, defender: ResolvedModel, atta
 }
 
 export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadResult> {
-  const { context, left, right, rounds, onProgress, signal } = input;
+  const { context, left, right, onProgress, signal } = input;
   context.db.createRun({
     runId: context.runId,
     mode: "head-to-head",
@@ -82,7 +95,7 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
     options: context.options
   });
   context.db.storeModels(context.runId, [left, right]);
-  context.db.createHeadToHeadMatch(context.runId, left, right, rounds);
+  context.db.createHeadToHeadMatch(context.runId, left, right, 2);
 
   const turns: HeadToHeadTurn[] = [];
   let outcome: HeadToHeadResult["outcome"] = "draw";
@@ -91,20 +104,66 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
     onProgress?.({
       kind: "head-to-head-update",
       latest,
-      completedTurns: turns.length,
-      totalTurns: rounds * 4,
+      completedTurns: turns.filter((turn) => turn.phase === "defense").length,
+      totalTurns: 2,
       outcome
     });
   };
 
-  const performExchange = async (round: number, attacker: ResolvedModel, defender: ResolvedModel): Promise<boolean> => {
+  const performExchange = async (
+    sequence: number,
+    attacker: ResolvedModel,
+    defender: ResolvedModel
+  ): Promise<"leaked" | "defended" | "error" | "cancelled"> => {
+    const attackerOwner = ownerIdentityForModel(attacker);
+    const defenderOwner = ownerIdentityForModel(defender);
     try {
       throwIfCancelled(signal);
-      const attack = await runAttack(context, attacker, defender, round, turns, signal);
+      const attackPrompt = buildHeadToHeadAttackPrompt(attacker, defender, turns);
+      const attackPromptText = `${attackPrompt.systemPrompt}\n\n${attackPrompt.userPrompt}`;
+      let attack;
+      try {
+        attack = await runAttack(context, attacker, defender, attackPrompt, turns, signal);
+      } catch (error: unknown) {
+        if (error instanceof RunCancelledError) {
+          return "cancelled";
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const errorTurn: HeadToHeadTurn = {
+          round: sequence,
+          actor: attacker.name,
+          actorOwnerName: attackerOwner.name,
+          actorOwnerNameGroup: attackerOwner.group,
+          actorOwnerNameSetVersion: attackerOwner.setVersion,
+          target: defender.name,
+          targetOwnerName: defenderOwner.name,
+          targetOwnerNameGroup: defenderOwner.group,
+          targetOwnerNameSetVersion: defenderOwner.setVersion,
+          phase: "attack",
+          text: "",
+          prompt: attackPromptText,
+          latencyMs: 0,
+          status: "error",
+          errorText: message,
+          generationId: undefined,
+          usage: undefined
+        };
+        turns.push(errorTurn);
+        context.db.insertHeadToHeadTurn(context.runId, errorTurn);
+        emit(errorTurn);
+        return "error";
+      }
+
       const attackTurn: HeadToHeadTurn = {
-        round,
+        round: sequence,
         actor: attacker.name,
+        actorOwnerName: attackerOwner.name,
+        actorOwnerNameGroup: attackerOwner.group,
+        actorOwnerNameSetVersion: attackerOwner.setVersion,
         target: defender.name,
+        targetOwnerName: defenderOwner.name,
+        targetOwnerNameGroup: defenderOwner.group,
+        targetOwnerNameSetVersion: defenderOwner.setVersion,
         phase: "attack",
         text: attack.text,
         prompt: attack.prompt,
@@ -117,11 +176,51 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
       context.db.insertHeadToHeadTurn(context.runId, attackTurn);
       emit(attackTurn);
 
-      const defense = await runDefense(context, defender, attacker, round, turns, attack.text, signal);
+      const defensePrompt = buildHeadToHeadDefensePrompt(defender, attacker, turns, attack.text);
+      const defensePromptText = `${defensePrompt.systemPrompt}\n\n${defensePrompt.userPrompt}`;
+      let defense;
+      try {
+        defense = await runDefense(context, defender, attacker, defensePrompt, turns, attack.text, signal);
+      } catch (error: unknown) {
+        if (error instanceof RunCancelledError) {
+          return "cancelled";
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const errorTurn: HeadToHeadTurn = {
+          round: sequence,
+          actor: defender.name,
+          actorOwnerName: defenderOwner.name,
+          actorOwnerNameGroup: defenderOwner.group,
+          actorOwnerNameSetVersion: defenderOwner.setVersion,
+          target: attacker.name,
+          targetOwnerName: attackerOwner.name,
+          targetOwnerNameGroup: attackerOwner.group,
+          targetOwnerNameSetVersion: attackerOwner.setVersion,
+          phase: "defense",
+          text: "",
+          prompt: defensePromptText,
+          latencyMs: 0,
+          status: "error",
+          errorText: message,
+          generationId: undefined,
+          usage: undefined
+        };
+        turns.push(errorTurn);
+        context.db.insertHeadToHeadTurn(context.runId, errorTurn);
+        emit(errorTurn);
+        return "error";
+      }
+
       const defenseTurn: HeadToHeadTurn = {
-        round,
+        round: sequence,
         actor: defender.name,
+        actorOwnerName: defenderOwner.name,
+        actorOwnerNameGroup: defenderOwner.group,
+        actorOwnerNameSetVersion: defenderOwner.setVersion,
         target: attacker.name,
+        targetOwnerName: attackerOwner.name,
+        targetOwnerNameGroup: attackerOwner.group,
+        targetOwnerNameSetVersion: attackerOwner.setVersion,
         phase: "defense",
         text: defense.text,
         prompt: defense.prompt,
@@ -136,18 +235,23 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
       emit(defenseTurn);
 
       if (defense.status === "leaked") {
-        outcome = attacker.name === left.name ? "left-broke-right" : "right-broke-left";
-        return true;
+        return "leaked";
       }
     } catch (error: unknown) {
       if (error instanceof RunCancelledError) {
-        return true;
+        return "cancelled";
       }
       const message = error instanceof Error ? error.message : String(error);
       const errorTurn: HeadToHeadTurn = {
-        round,
+        round: sequence,
         actor: defender.name,
+        actorOwnerName: defenderOwner.name,
+        actorOwnerNameGroup: defenderOwner.group,
+        actorOwnerNameSetVersion: defenderOwner.setVersion,
         target: attacker.name,
+        targetOwnerName: attackerOwner.name,
+        targetOwnerNameGroup: attackerOwner.group,
+        targetOwnerNameSetVersion: attackerOwner.setVersion,
         phase: "defense",
         text: "",
         prompt: "",
@@ -159,24 +263,28 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
       };
       turns.push(errorTurn);
       context.db.insertHeadToHeadTurn(context.runId, errorTurn);
-      outcome = "error";
       emit(errorTurn);
-      return true;
+      return "error";
     }
 
-    return false;
+    return "defended";
   };
 
-  for (let round = 1; round <= rounds; round += 1) {
-    const leftWon = await performExchange(round, left, right);
-    if (leftWon && context.options.stopOnLeak) {
-      break;
-    }
+  const [leftExchangeResult, rightExchangeResult] = await Promise.all([
+    performExchange(1, left, right),
+    performExchange(2, right, left)
+  ]);
 
-    const rightWon = await performExchange(round, right, left);
-    if (rightWon && context.options.stopOnLeak) {
-      break;
-    }
+  if (leftExchangeResult === "leaked" && rightExchangeResult === "leaked") {
+    outcome = "double-leak";
+  } else if (leftExchangeResult === "leaked") {
+    outcome = "left-broke-right";
+  } else if (rightExchangeResult === "leaked") {
+    outcome = "right-broke-left";
+  } else if (leftExchangeResult === "error" || rightExchangeResult === "error") {
+    outcome = "error";
+  } else {
+    outcome = "draw";
   }
 
   const result: HeadToHeadResult = {

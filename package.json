@@ -12,6 +12,7 @@
     "matrix:openai": "npm run build && node dist/index.js matrix --config ./agents.openai.json",
     "matrix:all": "npm run build && node dist/index.js matrix --config ./agents.all.json",
     "history": "npm run build && node dist/index.js history",
+    "leaks": "npm run build && node dist/index.js leaks",
     "head-to-head": "npm run build && node dist/index.js head-to-head",
     "add-model": "npm run build && node dist/add-model.js",
     "simulate": "npm run build && node dist/index.js matrix --config ./agents.example.json --offline",

@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
 
+import { ownerIdentityForModel } from "./owners.js";
 import { nowIso } from "./utils.js";
 import type {
   BenchmarkMode,
@@ -10,6 +11,7 @@ import type {
   HeadToHeadHistoryTurnDetail,
   HeadToHeadTurn,
   HistoryLeaderboardRow,
+  LeakMatrixResultSummary,
   HistoryRunDetail,
   HistoryRunSummary,
   MatrixAttempt,
@@ -17,6 +19,7 @@ import type {
   MatrixHistoryResultSummary,
   MatrixResult,
   ResolvedModel,
+  RunModelRow,
   RunRow,
   RunStatus,
   RuntimeOptions
@@ -60,6 +63,9 @@ export class BenchmarkDatabase {
         slot INTEGER NOT NULL,
         name TEXT NOT NULL,
         model_ref TEXT NOT NULL,
+        owner_name TEXT,
+        owner_name_group TEXT,
+        owner_name_set_version TEXT,
         persona TEXT,
         secret TEXT NOT NULL
       );
@@ -69,8 +75,14 @@ export class BenchmarkDatabase {
         run_id TEXT NOT NULL,
         attacker_name TEXT NOT NULL,
         attacker_model TEXT NOT NULL,
+        attacker_owner_name TEXT,
+        attacker_owner_name_group TEXT,
+        attacker_owner_name_set_version TEXT,
         defender_name TEXT NOT NULL,
         defender_model TEXT NOT NULL,
+        defender_owner_name TEXT,
+        defender_owner_name_group TEXT,
+        defender_owner_name_set_version TEXT,
         status TEXT NOT NULL,
         attack_prompt TEXT NOT NULL,
         attack_message TEXT NOT NULL,
@@ -100,8 +112,14 @@ export class BenchmarkDatabase {
         run_id TEXT NOT NULL,
         attacker_name TEXT NOT NULL,
         attacker_model TEXT NOT NULL,
+        attacker_owner_name TEXT,
+        attacker_owner_name_group TEXT,
+        attacker_owner_name_set_version TEXT,
         defender_name TEXT NOT NULL,
         defender_model TEXT NOT NULL,
+        defender_owner_name TEXT,
+        defender_owner_name_group TEXT,
+        defender_owner_name_set_version TEXT,
         attempt_number INTEGER NOT NULL,
         status TEXT NOT NULL,
         attack_prompt TEXT NOT NULL,
@@ -130,9 +148,15 @@ export class BenchmarkDatabase {
         run_id TEXT PRIMARY KEY,
         left_name TEXT NOT NULL,
         left_model TEXT NOT NULL,
+        left_owner_name TEXT,
+        left_owner_name_group TEXT,
+        left_owner_name_set_version TEXT,
         left_secret TEXT NOT NULL,
         right_name TEXT NOT NULL,
         right_model TEXT NOT NULL,
+        right_owner_name TEXT,
+        right_owner_name_group TEXT,
+        right_owner_name_set_version TEXT,
         right_secret TEXT NOT NULL,
         rounds_planned INTEGER NOT NULL,
         rounds_completed INTEGER NOT NULL,
@@ -147,7 +171,13 @@ export class BenchmarkDatabase {
         run_id TEXT NOT NULL,
         round_number INTEGER NOT NULL,
         actor_name TEXT NOT NULL,
+        actor_owner_name TEXT,
+        actor_owner_name_group TEXT,
+        actor_owner_name_set_version TEXT,
         target_name TEXT NOT NULL,
+        target_owner_name TEXT,
+        target_owner_name_group TEXT,
+        target_owner_name_set_version TEXT,
         phase TEXT NOT NULL,
         status TEXT NOT NULL,
         prompt_text TEXT NOT NULL,
@@ -169,6 +199,16 @@ export class BenchmarkDatabase {
       CREATE INDEX IF NOT EXISTS idx_head_to_head_turns_run_id ON head_to_head_turns(run_id);
     `);
 
+    this.ensureColumn("run_models", "owner_name", "TEXT");
+    this.ensureColumn("run_models", "owner_name_group", "TEXT");
+    this.ensureColumn("run_models", "owner_name_set_version", "TEXT");
+
+    this.ensureColumn("matrix_results", "attacker_owner_name", "TEXT");
+    this.ensureColumn("matrix_results", "attacker_owner_name_group", "TEXT");
+    this.ensureColumn("matrix_results", "attacker_owner_name_set_version", "TEXT");
+    this.ensureColumn("matrix_results", "defender_owner_name", "TEXT");
+    this.ensureColumn("matrix_results", "defender_owner_name_group", "TEXT");
+    this.ensureColumn("matrix_results", "defender_owner_name_set_version", "TEXT");
     this.ensureColumn("matrix_results", "attack_generation_id", "TEXT");
     this.ensureColumn("matrix_results", "defense_generation_id", "TEXT");
     this.ensureColumn("matrix_results", "attack_prompt_tokens", "INTEGER");
@@ -182,6 +222,12 @@ export class BenchmarkDatabase {
     this.ensureColumn("matrix_results", "defense_cost", "REAL");
     this.ensureColumn("matrix_results", "defense_usage_json", "TEXT");
 
+    this.ensureColumn("matrix_attempts", "attacker_owner_name", "TEXT");
+    this.ensureColumn("matrix_attempts", "attacker_owner_name_group", "TEXT");
+    this.ensureColumn("matrix_attempts", "attacker_owner_name_set_version", "TEXT");
+    this.ensureColumn("matrix_attempts", "defender_owner_name", "TEXT");
+    this.ensureColumn("matrix_attempts", "defender_owner_name_group", "TEXT");
+    this.ensureColumn("matrix_attempts", "defender_owner_name_set_version", "TEXT");
     this.ensureColumn("matrix_attempts", "attack_generation_id", "TEXT");
     this.ensureColumn("matrix_attempts", "defense_generation_id", "TEXT");
     this.ensureColumn("matrix_attempts", "attack_prompt_tokens", "INTEGER");
@@ -195,6 +241,19 @@ export class BenchmarkDatabase {
     this.ensureColumn("matrix_attempts", "defense_cost", "REAL");
     this.ensureColumn("matrix_attempts", "defense_usage_json", "TEXT");
 
+    this.ensureColumn("head_to_head_matches", "left_owner_name", "TEXT");
+    this.ensureColumn("head_to_head_matches", "left_owner_name_group", "TEXT");
+    this.ensureColumn("head_to_head_matches", "left_owner_name_set_version", "TEXT");
+    this.ensureColumn("head_to_head_matches", "right_owner_name", "TEXT");
+    this.ensureColumn("head_to_head_matches", "right_owner_name_group", "TEXT");
+    this.ensureColumn("head_to_head_matches", "right_owner_name_set_version", "TEXT");
+
+    this.ensureColumn("head_to_head_turns", "actor_owner_name", "TEXT");
+    this.ensureColumn("head_to_head_turns", "actor_owner_name_group", "TEXT");
+    this.ensureColumn("head_to_head_turns", "actor_owner_name_set_version", "TEXT");
+    this.ensureColumn("head_to_head_turns", "target_owner_name", "TEXT");
+    this.ensureColumn("head_to_head_turns", "target_owner_name_group", "TEXT");
+    this.ensureColumn("head_to_head_turns", "target_owner_name_set_version", "TEXT");
     this.ensureColumn("head_to_head_turns", "generation_id", "TEXT");
     this.ensureColumn("head_to_head_turns", "prompt_tokens", "INTEGER");
     this.ensureColumn("head_to_head_turns", "completion_tokens", "INTEGER");
@@ -232,12 +291,19 @@ export class BenchmarkDatabase {
 
   storeModels(runId: string, models: ResolvedModel[]): void {
     const stmt = this.db.prepare(`
-      INSERT INTO run_models (run_id, slot, name, model_ref, persona, secret)
-      VALUES (@runId, @slot, @name, @model, @persona, @secret)
+      INSERT INTO run_models (run_id, slot, name, model_ref, owner_name, owner_name_group, owner_name_set_version, persona, secret)
+      VALUES (@runId, @slot, @name, @model, @ownerName, @ownerNameGroup, @ownerNameSetVersion, @persona, @secret)
     `);
     const transaction = this.db.transaction((entries: ResolvedModel[]) => {
       for (const model of entries) {
-        stmt.run({ runId, ...model });
+        const owner = ownerIdentityForModel(model);
+        stmt.run({
+          runId,
+          ...model,
+          ownerName: owner.name,
+          ownerNameGroup: owner.group,
+          ownerNameSetVersion: owner.setVersion
+        });
       }
     });
     transaction(models);
@@ -262,6 +328,8 @@ export class BenchmarkDatabase {
     this.db.prepare(`
       INSERT INTO matrix_results (
         run_id, attacker_name, attacker_model, defender_name, defender_model, status,
+        attacker_owner_name, attacker_owner_name_group, attacker_owner_name_set_version,
+        defender_owner_name, defender_owner_name_group, defender_owner_name_set_version,
         attack_prompt, attack_message, defense_prompt, defense_response,
         attack_latency_ms, defense_latency_ms,
         attack_generation_id, defense_generation_id,
@@ -270,6 +338,8 @@ export class BenchmarkDatabase {
         error_text, started_at, finished_at
       ) VALUES (
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @status,
+        @attackerOwnerName, @attackerOwnerNameGroup, @attackerOwnerNameSetVersion,
+        @defenderOwnerName, @defenderOwnerNameGroup, @defenderOwnerNameSetVersion,
         @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
         @attackLatencyMs, @defenseLatencyMs,
         @attackGenerationId, @defenseGenerationId,
@@ -283,6 +353,12 @@ export class BenchmarkDatabase {
       attackerModel: "",
       defenderName: result.defender,
       defenderModel: "",
+      attackerOwnerName: null,
+      attackerOwnerNameGroup: null,
+      attackerOwnerNameSetVersion: null,
+      defenderOwnerName: null,
+      defenderOwnerNameGroup: null,
+      defenderOwnerNameSetVersion: null,
       status: result.status,
       attackPrompt: result.attackPrompt,
       attackMessage: result.attackMessage,
@@ -309,9 +385,13 @@ export class BenchmarkDatabase {
   }
 
   insertMatrixResultWithModels(runId: string, attackerModel: ResolvedModel, defenderModel: ResolvedModel, result: MatrixResult): void {
+    const attackerOwner = ownerIdentityForModel(attackerModel);
+    const defenderOwner = ownerIdentityForModel(defenderModel);
     this.db.prepare(`
       INSERT INTO matrix_results (
         run_id, attacker_name, attacker_model, defender_name, defender_model, status,
+        attacker_owner_name, attacker_owner_name_group, attacker_owner_name_set_version,
+        defender_owner_name, defender_owner_name_group, defender_owner_name_set_version,
         attack_prompt, attack_message, defense_prompt, defense_response,
         attack_latency_ms, defense_latency_ms,
         attack_generation_id, defense_generation_id,
@@ -320,6 +400,8 @@ export class BenchmarkDatabase {
         error_text, started_at, finished_at
       ) VALUES (
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @status,
+        @attackerOwnerName, @attackerOwnerNameGroup, @attackerOwnerNameSetVersion,
+        @defenderOwnerName, @defenderOwnerNameGroup, @defenderOwnerNameSetVersion,
         @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
         @attackLatencyMs, @defenseLatencyMs,
         @attackGenerationId, @defenseGenerationId,
@@ -331,8 +413,14 @@ export class BenchmarkDatabase {
       runId,
       attackerName: attackerModel.name,
       attackerModel: attackerModel.model,
+      attackerOwnerName: attackerOwner.name,
+      attackerOwnerNameGroup: attackerOwner.group,
+      attackerOwnerNameSetVersion: attackerOwner.setVersion,
       defenderName: defenderModel.name,
       defenderModel: defenderModel.model,
+      defenderOwnerName: defenderOwner.name,
+      defenderOwnerNameGroup: defenderOwner.group,
+      defenderOwnerNameSetVersion: defenderOwner.setVersion,
       status: result.status,
       attackPrompt: result.attackPrompt,
       attackMessage: result.attackMessage,
@@ -364,9 +452,13 @@ export class BenchmarkDatabase {
     defenderModel: ResolvedModel,
     attempt: MatrixAttempt
   ): void {
+    const attackerOwner = ownerIdentityForModel(attackerModel);
+    const defenderOwner = ownerIdentityForModel(defenderModel);
     this.db.prepare(`
       INSERT INTO matrix_attempts (
         run_id, attacker_name, attacker_model, defender_name, defender_model, attempt_number, status,
+        attacker_owner_name, attacker_owner_name_group, attacker_owner_name_set_version,
+        defender_owner_name, defender_owner_name_group, defender_owner_name_set_version,
         attack_prompt, attack_message, defense_prompt, defense_response,
         attack_latency_ms, defense_latency_ms,
         attack_generation_id, defense_generation_id,
@@ -375,6 +467,8 @@ export class BenchmarkDatabase {
         error_text, created_at
       ) VALUES (
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @attemptNumber, @status,
+        @attackerOwnerName, @attackerOwnerNameGroup, @attackerOwnerNameSetVersion,
+        @defenderOwnerName, @defenderOwnerNameGroup, @defenderOwnerNameSetVersion,
         @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
         @attackLatencyMs, @defenseLatencyMs,
         @attackGenerationId, @defenseGenerationId,
@@ -386,8 +480,14 @@ export class BenchmarkDatabase {
       runId,
       attackerName: attackerModel.name,
       attackerModel: attackerModel.model,
+      attackerOwnerName: attackerOwner.name,
+      attackerOwnerNameGroup: attackerOwner.group,
+      attackerOwnerNameSetVersion: attackerOwner.setVersion,
       defenderName: defenderModel.name,
       defenderModel: defenderModel.model,
+      defenderOwnerName: defenderOwner.name,
+      defenderOwnerNameGroup: defenderOwner.group,
+      defenderOwnerNameSetVersion: defenderOwner.setVersion,
       attemptNumber: attempt.attemptNumber,
       status: attempt.status,
       attackPrompt: attempt.attackPrompt,
@@ -414,21 +514,33 @@ export class BenchmarkDatabase {
   }
 
   createHeadToHeadMatch(runId: string, left: ResolvedModel, right: ResolvedModel, rounds: number): void {
+    const leftOwner = ownerIdentityForModel(left);
+    const rightOwner = ownerIdentityForModel(right);
     this.db.prepare(`
       INSERT INTO head_to_head_matches (
         run_id, left_name, left_model, left_secret, right_name, right_model, right_secret,
+        left_owner_name, left_owner_name_group, left_owner_name_set_version,
+        right_owner_name, right_owner_name_group, right_owner_name_set_version,
         rounds_planned, rounds_completed, outcome, started_at, finished_at, error_text
       ) VALUES (
         @runId, @leftName, @leftModel, @leftSecret, @rightName, @rightModel, @rightSecret,
+        @leftOwnerName, @leftOwnerNameGroup, @leftOwnerNameSetVersion,
+        @rightOwnerName, @rightOwnerNameGroup, @rightOwnerNameSetVersion,
         @roundsPlanned, 0, 'draw', @startedAt, NULL, NULL
       )
     `).run({
       runId,
       leftName: left.name,
       leftModel: left.model,
+      leftOwnerName: leftOwner.name,
+      leftOwnerNameGroup: leftOwner.group,
+      leftOwnerNameSetVersion: leftOwner.setVersion,
       leftSecret: left.secret,
       rightName: right.name,
       rightModel: right.model,
+      rightOwnerName: rightOwner.name,
+      rightOwnerNameGroup: rightOwner.group,
+      rightOwnerNameSetVersion: rightOwner.setVersion,
       rightSecret: right.secret,
       roundsPlanned: rounds,
       startedAt: nowIso()
@@ -456,11 +568,15 @@ export class BenchmarkDatabase {
     this.db.prepare(`
       INSERT INTO head_to_head_turns (
         run_id, round_number, actor_name, target_name, phase, status,
+        actor_owner_name, actor_owner_name_group, actor_owner_name_set_version,
+        target_owner_name, target_owner_name_group, target_owner_name_set_version,
         prompt_text, response_text, latency_ms,
         generation_id, prompt_tokens, completion_tokens, total_tokens, cost, usage_json,
         leaked_secret_owner, error_text, created_at
       ) VALUES (
         @runId, @roundNumber, @actorName, @targetName, @phase, @status,
+        @actorOwnerName, @actorOwnerNameGroup, @actorOwnerNameSetVersion,
+        @targetOwnerName, @targetOwnerNameGroup, @targetOwnerNameSetVersion,
         @promptText, @responseText, @latencyMs,
         @generationId, @promptTokens, @completionTokens, @totalTokens, @cost, @usageJson,
         @leakedSecretOwner, @errorText, @createdAt
@@ -469,7 +585,13 @@ export class BenchmarkDatabase {
       runId,
       roundNumber: turn.round,
       actorName: turn.actor,
+      actorOwnerName: turn.actorOwnerName ?? null,
+      actorOwnerNameGroup: turn.actorOwnerNameGroup ?? null,
+      actorOwnerNameSetVersion: turn.actorOwnerNameSetVersion ?? null,
       targetName: turn.target,
+      targetOwnerName: turn.targetOwnerName ?? null,
+      targetOwnerNameGroup: turn.targetOwnerNameGroup ?? null,
+      targetOwnerNameSetVersion: turn.targetOwnerNameSetVersion ?? null,
       phase: turn.phase,
       status: turn.status,
       promptText: turn.prompt,
@@ -489,6 +611,23 @@ export class BenchmarkDatabase {
 
   getRun(runId: string): RunRow | undefined {
     return this.db.prepare(`SELECT * FROM runs WHERE run_id = ?`).get(runId) as RunRow | undefined;
+  }
+
+  getRunModels(runId: string): RunModelRow[] {
+    return this.db.prepare(`
+      SELECT
+        slot,
+        name,
+        model_ref AS modelRef,
+        owner_name AS ownerName,
+        owner_name_group AS ownerNameGroup,
+        owner_name_set_version AS ownerNameSetVersion,
+        persona,
+        secret
+      FROM run_models
+      WHERE run_id = ?
+      ORDER BY slot ASC
+    `).all(runId) as RunModelRow[];
   }
 
   listHistoryRuns(limit = 50): HistoryRunSummary[] {
@@ -644,8 +783,14 @@ export class BenchmarkDatabase {
       SELECT
         attacker_name AS attackerName,
         attacker_model AS attackerModel,
+        attacker_owner_name AS attackerOwnerName,
+        attacker_owner_name_group AS attackerOwnerNameGroup,
+        attacker_owner_name_set_version AS attackerOwnerNameSetVersion,
         defender_name AS defenderName,
         defender_model AS defenderModel,
+        defender_owner_name AS defenderOwnerName,
+        defender_owner_name_group AS defenderOwnerNameGroup,
+        defender_owner_name_set_version AS defenderOwnerNameSetVersion,
         status,
         (
           SELECT COUNT(*)
@@ -673,11 +818,50 @@ export class BenchmarkDatabase {
     `).all(runId) as MatrixHistoryResultSummary[];
   }
 
+  listLeakResults(limit = 200): LeakMatrixResultSummary[] {
+    return this.db.prepare(`
+      SELECT
+        run_id AS runId,
+        attacker_name AS attackerName,
+        attacker_model AS attackerModel,
+        attacker_owner_name AS attackerOwnerName,
+        attacker_owner_name_group AS attackerOwnerNameGroup,
+        attacker_owner_name_set_version AS attackerOwnerNameSetVersion,
+        defender_name AS defenderName,
+        defender_model AS defenderModel,
+        defender_owner_name AS defenderOwnerName,
+        defender_owner_name_group AS defenderOwnerNameGroup,
+        defender_owner_name_set_version AS defenderOwnerNameSetVersion,
+        status,
+        (
+          SELECT COUNT(*)
+          FROM matrix_attempts
+          WHERE matrix_attempts.run_id = matrix_results.run_id
+            AND matrix_attempts.attacker_name = matrix_results.attacker_name
+            AND matrix_attempts.defender_name = matrix_results.defender_name
+        ) AS attempts,
+        attack_latency_ms AS attackLatencyMs,
+        defense_latency_ms AS defenseLatencyMs,
+        error_text AS errorText,
+        finished_at AS finishedAt
+      FROM matrix_results
+      WHERE status = 'leaked'
+      ORDER BY finished_at DESC
+      LIMIT ?
+    `).all(limit) as LeakMatrixResultSummary[];
+  }
+
   getMatrixAttemptsForPair(runId: string, attackerName: string, defenderName: string): MatrixHistoryAttemptDetail[] {
     return this.db.prepare(`
       SELECT
         attempt_number AS attemptNumber,
         status,
+        attacker_owner_name AS attackerOwnerName,
+        attacker_owner_name_group AS attackerOwnerNameGroup,
+        attacker_owner_name_set_version AS attackerOwnerNameSetVersion,
+        defender_owner_name AS defenderOwnerName,
+        defender_owner_name_group AS defenderOwnerNameGroup,
+        defender_owner_name_set_version AS defenderOwnerNameSetVersion,
         attack_prompt AS attackPrompt,
         attack_message AS attackMessage,
         defense_prompt AS defensePrompt,
@@ -705,7 +889,13 @@ export class BenchmarkDatabase {
       SELECT
         round_number AS roundNumber,
         actor_name AS actorName,
+        actor_owner_name AS actorOwnerName,
+        actor_owner_name_group AS actorOwnerNameGroup,
+        actor_owner_name_set_version AS actorOwnerNameSetVersion,
         target_name AS targetName,
+        target_owner_name AS targetOwnerName,
+        target_owner_name_group AS targetOwnerNameGroup,
+        target_owner_name_set_version AS targetOwnerNameSetVersion,
         phase,
         status,
         prompt_text AS promptText,

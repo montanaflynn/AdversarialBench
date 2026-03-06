@@ -1,11 +1,22 @@
 export type BenchmarkMode = "matrix" | "head-to-head";
-export type CliMode = BenchmarkMode | "history";
+export type CliMode = BenchmarkMode | "history" | "leaks";
 export type MatchStatus = "pending" | "running" | "resisted" | "leaked" | "refused" | "error";
 export type RunStatus = "running" | "completed" | "failed" | "cancelled";
+export type OwnerNameGroup =
+  | "anglo_common"
+  | "arabic"
+  | "south_asian"
+  | "east_asian"
+  | "hispanic"
+  | "west_african"
+  | "french"
+  | "black_american"
+  | "synthetic_fallback";
 
 export interface ConfigDefaults {
   provider?: "openrouter";
   concurrency?: number;
+  headToHeadConcurrency?: number;
   temperature?: number;
   maxTokens?: number;
   attackerMessages?: number;
@@ -29,6 +40,12 @@ export interface BenchmarkConfig {
 export interface ResolvedModel extends ModelDefinition {
   slot: number;
   secret: string;
+}
+
+export interface OwnerIdentity {
+  name: string;
+  group: OwnerNameGroup;
+  setVersion: string;
 }
 
 export interface RuntimeOptions {
@@ -140,7 +157,13 @@ export interface MatrixRunRecord {
 export interface HeadToHeadTurn {
   round: number;
   actor: string;
+  actorOwnerName?: string;
+  actorOwnerNameGroup?: OwnerNameGroup;
+  actorOwnerNameSetVersion?: string;
   target: string;
+  targetOwnerName?: string;
+  targetOwnerNameGroup?: OwnerNameGroup;
+  targetOwnerNameSetVersion?: string;
   phase: "attack" | "defense";
   text: string;
   prompt: string;
@@ -204,8 +227,14 @@ export interface HistoryLeaderboardRow {
 export interface MatrixHistoryResultSummary {
   attackerName: string;
   attackerModel: string;
+  attackerOwnerName: string | null;
+  attackerOwnerNameGroup: OwnerNameGroup | null;
+  attackerOwnerNameSetVersion: string | null;
   defenderName: string;
   defenderModel: string;
+  defenderOwnerName: string | null;
+  defenderOwnerNameGroup: OwnerNameGroup | null;
+  defenderOwnerNameSetVersion: string | null;
   status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
   attempts: number;
   attackLatencyMs: number;
@@ -214,9 +243,19 @@ export interface MatrixHistoryResultSummary {
   finishedAt: string;
 }
 
+export interface LeakMatrixResultSummary extends MatrixHistoryResultSummary {
+  runId: string;
+}
+
 export interface MatrixHistoryAttemptDetail {
   attemptNumber: number;
   status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  attackerOwnerName: string | null;
+  attackerOwnerNameGroup: OwnerNameGroup | null;
+  attackerOwnerNameSetVersion: string | null;
+  defenderOwnerName: string | null;
+  defenderOwnerNameGroup: OwnerNameGroup | null;
+  defenderOwnerNameSetVersion: string | null;
   attackPrompt: string;
   attackMessage: string;
   defensePrompt: string;
@@ -236,7 +275,13 @@ export interface MatrixHistoryAttemptDetail {
 export interface HeadToHeadHistoryTurnDetail {
   roundNumber: number;
   actorName: string;
+  actorOwnerName: string | null;
+  actorOwnerNameGroup: OwnerNameGroup | null;
+  actorOwnerNameSetVersion: string | null;
   targetName: string;
+  targetOwnerName: string | null;
+  targetOwnerNameGroup: OwnerNameGroup | null;
+  targetOwnerNameSetVersion: string | null;
   phase: "attack" | "defense";
   status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
   promptText: string;
@@ -248,6 +293,17 @@ export interface HeadToHeadHistoryTurnDetail {
   generationId: string | null;
   cost: number | null;
   usageJson: string | null;
+}
+
+export interface RunModelRow {
+  slot: number;
+  name: string;
+  modelRef: string;
+  ownerName: string | null;
+  ownerNameGroup: OwnerNameGroup | null;
+  ownerNameSetVersion: string | null;
+  persona: string | null;
+  secret: string;
 }
 
 export interface HistoryRunDetail extends HistoryRunSummary {

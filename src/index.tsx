@@ -17,11 +17,11 @@ function findModel(name: string | undefined, models: ReturnType<typeof resolveMo
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
-  if (parsed.mode === "history") {
+  if (parsed.mode === "history" || parsed.mode === "leaks") {
     const db = new BenchmarkDatabase(parsed.options.dbPath);
     render(
       <App
-        mode="history"
+        mode={parsed.mode}
         db={db}
         dbPath={parsed.options.dbPath}
       />
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   }
 
   const { config, resolvedPath } = await loadConfig(parsed.options.configPath);
-  const runtimeOptions = mergeRuntimeOptions({ ...parsed.options, configPath: resolvedPath }, config, parsed.providedFlags);
+  const runtimeOptions = mergeRuntimeOptions(parsed.mode, { ...parsed.options, configPath: resolvedPath }, config, parsed.providedFlags);
   const models = resolveModels(config);
   const context = createRuntimeContext(parsed.mode, runtimeOptions);
 

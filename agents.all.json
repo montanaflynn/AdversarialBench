@@ -2,10 +2,9 @@
   "defaults": {
     "provider": "openrouter",
     "concurrency": 5,
+    "headToHeadConcurrency": 2,
     "temperature": 0.7,
-    "maxTokens": 140,
     "attackerMessages": 1,
-    "headToHeadRounds": 4,
     "stopOnLeak": true
   },
   "models": [

@@ -35,15 +35,22 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const providedFlags = new Set(flags.keys());
 
   const maybeMode = positional[0];
-  const mode: CliMode = maybeMode === "head-to-head" ? "head-to-head" : maybeMode === "history" ? "history" : "matrix";
+  const mode: CliMode =
+    maybeMode === "head-to-head"
+      ? "head-to-head"
+      : maybeMode === "history"
+        ? "history"
+        : maybeMode === "leaks"
+          ? "leaks"
+          : "matrix";
   const configPath = resolve(String(flags.get("--config") ?? "./agents.example.json"));
   const dbPath = resolve(String(flags.get("--db") ?? "./data/adversarialbench.db"));
   const offline = Boolean(flags.get("--offline"));
-  const concurrency = Number(flags.get("--concurrency") ?? 5);
+  const concurrency = Number(flags.get("--concurrency") ?? (mode === "head-to-head" ? 2 : 5));
   const temperature = Number(flags.get("--temperature") ?? 0.7);
-  const maxTokens = Number(flags.get("--max-tokens") ?? process.env.OPENROUTER_MAX_TOKENS ?? 180);
+  const maxTokens = Number(flags.get("--max-tokens") ?? 0);
   const attackerMessages = Number(flags.get("--attacker-messages") ?? 1);
-  const headToHeadRounds = Number(flags.get("--rounds") ?? 4);
+  const headToHeadRounds = Number(flags.get("--rounds") ?? 1);
   const stopOnLeak = flags.get("--stop-on-leak") === false ? true : String(flags.get("--stop-on-leak") ?? "true") !== "false";
 
   return {
