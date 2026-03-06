@@ -1,0 +1,49 @@
+name: Deploy Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: cd web && npm ci
+
+      - name: Build
+        run: cd web && npx next build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 213.111.152.198 >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          # Deploy standalone build
+          rsync -az --delete \
+            --exclude data \
+            --exclude node_modules \
+            --exclude .env \
+            web/.next/standalone/web/ \
+            god@213.111.152.198:/opt/adversarialbench/
+
+          # Deploy static assets
+          rsync -az web/.next/static/ god@213.111.152.198:/opt/adversarialbench/.next/static/
+
+          # Install native deps and restart
+          ssh god@213.111.152.198 "cd /opt/adversarialbench && npm install better-sqlite3 && sudo systemctl restart adversarialbench"

@@ -1,8 +1,8 @@
 import { getRunDetail, getMatrixResultsForRun, getHeadToHeadTurnsForRun } from "@/lib/db";
-import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { RunDetailTable } from "./table";
 import { HeadToHeadTable } from "./h2h-table";
+import { RunMatrixGrid } from "./matrix-grid";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
@@ -39,35 +39,49 @@ export default async function RunDetailPage({
         <p className="text-text-muted text-xs mt-1">
           {run.mode} &middot; {run.configPath} &middot;{" "}
           {new Date(run.startedAt).toLocaleString()}
+          {" "}&middot; concurrency {run.concurrency} &middot; temp {run.temperature} &middot; max tokens {run.maxTokens}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Total" value={run.totalItems} />
-        <StatCard label="Leaks" value={run.leakCount} color="text-leak" />
-        <StatCard label="Defended" value={run.defendedCount} color="text-defended" />
-        <StatCard label="Errors" value={run.errorCount} color="text-error" />
+      {/* Compact inline stats strip */}
+      <div className="bg-surface-raised border border-border rounded-lg px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm tabular-nums">
+          <span className="font-semibold text-text-primary">{run.totalItems}</span>
+          <span className="text-text-muted">total</span>
+          <span className="text-text-muted">&middot;</span>
+          <span className="font-semibold text-leak">{run.leakCount}</span>
+          <span className="text-text-muted">leaks</span>
+          {run.totalItems > 0 && (
+            <>
+              <span className="text-text-muted">({((run.leakCount / run.totalItems) * 100).toFixed(1)}%)</span>
+            </>
+          )}
+          <span className="text-text-muted">&middot;</span>
+          <span className="font-semibold text-defended">{run.defendedCount}</span>
+          <span className="text-text-muted">defended</span>
+          <span className="text-text-muted">&middot;</span>
+          <span className="font-semibold text-error">{run.errorCount}</span>
+          <span className="text-text-muted">errors</span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Concurrency" value={run.concurrency} />
-        <StatCard label="Temperature" value={run.temperature} />
-        <StatCard label="Max Tokens" value={run.maxTokens} />
-      </div>
+      {isH2H ? (
+        <>
+          <h2 className="text-sm font-semibold mb-3">Head-to-Head Turns</h2>
+          <HeadToHeadTable data={h2hTurns} />
+        </>
+      ) : (
+        <>
+          {/* Matrix grid */}
+          <RunMatrixGrid data={matrixResults} />
 
-      <div>
-        {isH2H ? (
-          <>
-            <h2 className="text-sm font-semibold mb-3">Head-to-Head Turns</h2>
-            <HeadToHeadTable data={h2hTurns} />
-          </>
-        ) : (
-          <>
-            <h2 className="text-sm font-semibold mb-3">Matrix Results</h2>
+          {/* Detail table */}
+          <div>
+            <h2 className="text-sm font-semibold mb-3">All Results</h2>
             <RunDetailTable data={matrixResults} />
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
