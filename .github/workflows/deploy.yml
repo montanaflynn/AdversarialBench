@@ -34,16 +34,14 @@ jobs:
 
       - name: Deploy
         run: |
-          # Deploy standalone build
-          rsync -az --delete \
-            --exclude data \
-            --exclude node_modules \
-            --exclude .env \
-            web/.next/standalone/web/ \
-            god@213.111.152.198:/opt/adversarialbench/
+          # Stage deploy files
+          mkdir -p /tmp/deploy/.next
+          cp -r web/.next/standalone/web/* /tmp/deploy/
+          cp -r web/.next/static /tmp/deploy/.next/static
 
-          # Deploy static assets
-          rsync -az web/.next/static/ god@213.111.152.198:/opt/adversarialbench/.next/static/
+          # Upload tarball
+          tar czf /tmp/deploy.tar.gz -C /tmp/deploy .
+          scp /tmp/deploy.tar.gz god@213.111.152.198:/tmp/deploy.tar.gz
 
-          # Install native deps and restart
-          ssh god@213.111.152.198 "cd /opt/adversarialbench && npm install better-sqlite3 && sudo systemctl restart adversarialbench"
+          # Extract and restart
+          ssh god@213.111.152.198 'set -e; cd /opt/adversarialbench; tar xzf /tmp/deploy.tar.gz; npm install better-sqlite3 --prefer-offline 2>/dev/null; sudo systemctl restart adversarialbench; rm /tmp/deploy.tar.gz'
