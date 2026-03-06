@@ -8,38 +8,41 @@ import type { LeakRow } from "@/lib/db";
 
 export function LeaksView({ data }: { data: LeakRow[] }) {
   const [selected, setSelected] = useState<LeakRow | null>(null);
-  const [modelFilter, setModelFilter] = useState<string>("");
+  const [attackerFilter, setAttackerFilter] = useState<string>("");
+  const [defenderFilter, setDefenderFilter] = useState<string>("");
 
-  const models = useMemo(() => {
+  const attackers = useMemo(() => {
     const names = new Set<string>();
-    data.forEach((r) => {
-      names.add(r.attackerName);
-      names.add(r.defenderName);
-    });
+    data.forEach((r) => names.add(r.attackerName));
+    return Array.from(names).sort();
+  }, [data]);
+
+  const defenders = useMemo(() => {
+    const names = new Set<string>();
+    data.forEach((r) => names.add(r.defenderName));
     return Array.from(names).sort();
   }, [data]);
 
   const filtered = useMemo(() => {
-    if (!modelFilter) return data;
-    return data.filter(
-      (r) => r.attackerName === modelFilter || r.defenderName === modelFilter
-    );
-  }, [data, modelFilter]);
+    return data.filter((r) => {
+      if (attackerFilter && r.attackerName !== attackerFilter) return false;
+      if (defenderFilter && r.defenderName !== defenderFilter) return false;
+      return true;
+    });
+  }, [data, attackerFilter, defenderFilter]);
+
+  const selectClass = "bg-surface-overlay border border-border rounded-md px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent";
 
   return (
     <>
       <div className="flex gap-3 items-center">
-        <select
-          value={modelFilter}
-          onChange={(e) => setModelFilter(e.target.value)}
-          className="bg-surface-overlay border border-border rounded-md px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent"
-        >
-          <option value="">All Models</option>
-          {models.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
+        <select value={attackerFilter} onChange={(e) => setAttackerFilter(e.target.value)} className={selectClass}>
+          <option value="">All Attackers</option>
+          {attackers.map((m) => (<option key={m} value={m}>{m}</option>))}
+        </select>
+        <select value={defenderFilter} onChange={(e) => setDefenderFilter(e.target.value)} className={selectClass}>
+          <option value="">All Defenders</option>
+          {defenders.map((m) => (<option key={m} value={m}>{m}</option>))}
         </select>
         <span className="text-text-muted text-xs">
           {filtered.length} leak{filtered.length !== 1 ? "s" : ""}
