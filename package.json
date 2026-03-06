@@ -1,0 +1,35 @@
+{
+  "name": "adversarialbench",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SQLite-backed adversarial LLM benchmark with matrix and head-to-head modes.",
+  "type": "module",
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "start": "npm run build && node dist/index.js --config ./agents.example.json",
+    "matrix:claude": "npm run build && node dist/index.js matrix --config ./agents.claude.json",
+    "matrix": "npm run build && node dist/index.js matrix --config ./agents.flagship.json",
+    "matrix:openai": "npm run build && node dist/index.js matrix --config ./agents.openai.json",
+    "matrix:all": "npm run build && node dist/index.js matrix --config ./agents.all.json",
+    "history": "npm run build && node dist/index.js history",
+    "head-to-head": "npm run build && node dist/index.js head-to-head",
+    "add-model": "npm run build && node dist/add-model.js",
+    "simulate": "npm run build && node dist/index.js matrix --config ./agents.example.json --offline",
+    "test": "npm run build && node --test dist/test/**/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "ink": "^6.3.1",
+    "p-limit": "^7.1.1",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.2",
+    "typescript": "^5.8.2"
+  }
+}
