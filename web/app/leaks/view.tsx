@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { LikeButton } from "@/components/like-button";
 import { MessageModal } from "@/components/message-modal";
@@ -8,49 +8,11 @@ import type { LeakRow } from "@/lib/db";
 
 export function LeaksView({ data }: { data: LeakRow[] }) {
   const [selected, setSelected] = useState<LeakRow | null>(null);
-  const [attackerFilter, setAttackerFilter] = useState<string>("");
-  const [defenderFilter, setDefenderFilter] = useState<string>("");
-
-  const attackers = useMemo(() => {
-    const names = new Set<string>();
-    data.forEach((r) => names.add(r.attackerName));
-    return Array.from(names).sort();
-  }, [data]);
-
-  const defenders = useMemo(() => {
-    const names = new Set<string>();
-    data.forEach((r) => names.add(r.defenderName));
-    return Array.from(names).sort();
-  }, [data]);
-
-  const filtered = useMemo(() => {
-    return data.filter((r) => {
-      if (attackerFilter && r.attackerName !== attackerFilter) return false;
-      if (defenderFilter && r.defenderName !== defenderFilter) return false;
-      return true;
-    });
-  }, [data, attackerFilter, defenderFilter]);
-
-  const selectClass = "bg-surface-overlay border border-border rounded-md px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent";
 
   return (
     <>
-      <div className="flex gap-3 items-center">
-        <select value={attackerFilter} onChange={(e) => setAttackerFilter(e.target.value)} className={selectClass}>
-          <option value="">All Attackers</option>
-          {attackers.map((m) => (<option key={m} value={m}>{m}</option>))}
-        </select>
-        <select value={defenderFilter} onChange={(e) => setDefenderFilter(e.target.value)} className={selectClass}>
-          <option value="">All Defenders</option>
-          {defenders.map((m) => (<option key={m} value={m}>{m}</option>))}
-        </select>
-        <span className="text-text-muted text-xs">
-          {filtered.length} leak{filtered.length !== 1 ? "s" : ""}
-        </span>
-      </div>
-
       <DataTable
-        data={filtered}
+        data={data}
         searchKeys={["attackerName", "defenderName", "runId"]}
         searchPlaceholder="Search leaks..."
         onRowClick={setSelected}
@@ -59,6 +21,7 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
             key: "attackerName",
             label: "Attacker",
             sortable: true,
+            filterable: true,
             render: (row: LeakRow) => (
               <span className="text-accent font-medium">{row.attackerName}</span>
             ),
@@ -67,6 +30,7 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
             key: "defenderName",
             label: "Defender",
             sortable: true,
+            filterable: true,
             render: (row: LeakRow) => (
               <span className="text-leak font-medium">{row.defenderName}</span>
             ),

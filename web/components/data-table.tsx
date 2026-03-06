@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 interface Column<T> {
   key: string;
   label: string;
   sortable?: boolean;
+  filterable?: boolean;
   render?: (row: T, index: number) => React.ReactNode;
   className?: string;
 }
@@ -31,16 +32,56 @@ export function DataTable<T extends Record<string, any>>({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+
+  const filterOptions = useMemo(() => {
+    const opts: Record<string, string[]> = {};
+    for (const col of columns) {
+      if (!col.filterable) continue;
+      const vals = new Set<string>();
+      for (const row of data) {
+        const v = row[col.key];
+        if (v != null && v !== "") vals.add(String(v));
+      }
+      opts[col.key] = Array.from(vals).sort();
+    }
+    return opts;
+  }, [columns, data]);
+
+  const setFilter = useCallback((key: string, value: string) => {
+    setFilters((prev) => {
+      if (!value) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return { ...prev, [key]: value };
+    });
+    setPage(0);
+  }, []);
+
+  const hasActiveFilters = Object.keys(filters).length > 0;
 
   const filtered = useMemo(() => {
-    if (!search || !searchKeys?.length) return data;
-    const q = search.toLowerCase();
-    return data.filter((row) =>
-      searchKeys.some((key) =>
-        String(row[key] ?? "").toLowerCase().includes(q)
-      )
-    );
-  }, [data, search, searchKeys]);
+    let result = data;
+
+    // Apply column filters
+    for (const [key, value] of Object.entries(filters)) {
+      result = result.filter((row) => String(row[key] ?? "") === value);
+    }
+
+    // Apply search
+    if (search && searchKeys?.length) {
+      const q = search.toLowerCase();
+      result = result.filter((row) =>
+        searchKeys.some((key) =>
+          String(row[key] ?? "").toLowerCase().includes(q)
+        )
+      );
+    }
+
+    return result;
+  }, [data, filters, search, searchKeys]);
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered;
@@ -88,17 +129,38 @@ export function DataTable<T extends Record<string, any>>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  onClick={() => col.sortable && toggleSort(col.key)}
-                  className={`text-left px-3 py-2.5 text-text-muted font-medium uppercase tracking-wider text-[11px] ${
-                    col.sortable ? "cursor-pointer hover:text-text-secondary select-none" : ""
-                  } ${col.className ?? ""}`}
+                  className={`text-left px-3 py-2.5 text-text-muted font-medium uppercase tracking-wider text-[11px] ${col.className ?? ""}`}
                 >
-                  {col.label}
-                  {sortKey === col.key && (
-                    <span className="ml-1 text-accent">
-                      {sortDir === "asc" ? "\u2191" : "\u2193"}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      onClick={() => col.sortable && toggleSort(col.key)}
+                      className={col.sortable ? "cursor-pointer hover:text-text-secondary select-none" : ""}
+                    >
+                      {col.label}
+                      {sortKey === col.key && (
+                        <span className="ml-1 text-accent">
+                          {sortDir === "asc" ? "\u2191" : "\u2193"}
+                        </span>
+                      )}
                     </span>
-                  )}
+                    {col.filterable && filterOptions[col.key] && (
+                      <select
+                        value={filters[col.key] ?? ""}
+                        onChange={(e) => setFilter(col.key, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className={`ml-auto bg-transparent border rounded px-1 py-0.5 text-[10px] font-normal normal-case tracking-normal focus:outline-none cursor-pointer appearance-none max-w-[100px] truncate ${
+                          filters[col.key]
+                            ? "border-accent text-accent"
+                            : "border-border-subtle text-text-muted"
+                        }`}
+                      >
+                        <option value="">All</option>
+                        {filterOptions[col.key].map((v) => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -133,31 +195,41 @@ export function DataTable<T extends Record<string, any>>({
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
+      {(totalPages > 1 || hasActiveFilters || search) && (
         <div className="flex items-center justify-between mt-3 text-xs text-text-muted">
           <span>
             {sorted.length} result{sorted.length !== 1 ? "s" : ""}
-            {search ? " (filtered)" : ""}
+            {hasActiveFilters || search ? " (filtered)" : ""}
+            {hasActiveFilters && (
+              <button
+                onClick={() => setFilters({})}
+                className="ml-2 text-accent hover:text-accent-hover"
+              >
+                Clear filters
+              </button>
+            )}
           </span>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setPage(Math.max(0, page - 1))}
-              disabled={page === 0}
-              className="px-2 py-1 rounded bg-surface-overlay border border-border disabled:opacity-30 hover:bg-surface-overlay/80"
-            >
-              Prev
-            </button>
-            <span className="px-2 py-1 tabular-nums">
-              {page + 1} / {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
-              disabled={page >= totalPages - 1}
-              className="px-2 py-1 rounded bg-surface-overlay border border-border disabled:opacity-30 hover:bg-surface-overlay/80"
-            >
-              Next
-            </button>
-          </div>
+          {totalPages > 1 && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => setPage(Math.max(0, page - 1))}
+                disabled={page === 0}
+                className="px-2 py-1 rounded bg-surface-overlay border border-border disabled:opacity-30 hover:bg-surface-overlay/80"
+              >
+                Prev
+              </button>
+              <span className="px-2 py-1 tabular-nums">
+                {page + 1} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+                disabled={page >= totalPages - 1}
+                className="px-2 py-1 rounded bg-surface-overlay border border-border disabled:opacity-30 hover:bg-surface-overlay/80"
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

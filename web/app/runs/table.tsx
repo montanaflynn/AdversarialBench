@@ -41,6 +41,7 @@ export function RunsTable({ data }: { data: Run[] }) {
           key: "mode",
           label: "Mode",
           sortable: true,
+          filterable: true,
           render: (row: Run) => (
             <span className="text-text-secondary">{row.mode}</span>
           ),
@@ -49,6 +50,7 @@ export function RunsTable({ data }: { data: Run[] }) {
           key: "status",
           label: "Status",
           sortable: true,
+          filterable: true,
           render: (row: Run) => <StatusBadge status={row.status} />,
         },
         {

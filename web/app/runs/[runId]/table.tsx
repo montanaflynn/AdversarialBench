@@ -22,6 +22,7 @@ export function RunDetailTable({ data }: { data: MatrixResultRow[] }) {
             key: "attackerName",
             label: "Attacker",
             sortable: true,
+            filterable: true,
             render: (row: MatrixResultRow) => (
               <span className="text-text-primary font-medium">{row.attackerName}</span>
             ),
@@ -30,6 +31,7 @@ export function RunDetailTable({ data }: { data: MatrixResultRow[] }) {
             key: "defenderName",
             label: "Defender",
             sortable: true,
+            filterable: true,
             render: (row: MatrixResultRow) => (
               <span className="text-text-primary font-medium">{row.defenderName}</span>
             ),
@@ -38,6 +40,7 @@ export function RunDetailTable({ data }: { data: MatrixResultRow[] }) {
             key: "status",
             label: "Status",
             sortable: true,
+            filterable: true,
             render: (row: MatrixResultRow) => <StatusBadge status={row.status} />,
           },
           {
