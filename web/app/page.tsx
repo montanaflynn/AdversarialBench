@@ -10,9 +10,15 @@ export default function DashboardPage() {
   const pairStats = getModelPairStats();
   const leaderboard = getLeaderboard();
 
-  const models = Array.from(
+  const MIN_GAMES = 50;
+  const allModels = Array.from(
     new Set(pairStats.flatMap((p) => [p.attackerName, p.defenderName]))
-  ).sort();
+  );
+  const models = allModels.filter((m) => {
+    const asAttacker = pairStats.filter((p) => p.attackerName === m).reduce((s, p) => s + p.total, 0);
+    const asDefender = pairStats.filter((p) => p.defenderName === m).reduce((s, p) => s + p.total, 0);
+    return asAttacker >= MIN_GAMES || asDefender >= MIN_GAMES;
+  }).sort();
 
   return (
     <div className="space-y-8">
