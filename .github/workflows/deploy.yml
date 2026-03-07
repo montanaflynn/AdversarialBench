@@ -11,7 +11,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - name: Setup SSH
         run: |
@@ -21,11 +20,13 @@ jobs:
           ssh-keyscan -H 213.111.152.198 >> ~/.ssh/known_hosts
 
       - name: Deploy
+        timeout-minutes: 15
         run: |
-          cat > /tmp/deploy.sh << 'SCRIPT'
-          #!/bin/bash
+          ssh -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            god@213.111.152.198 'bash -s' << 'EOF'
           set -e
           export GIT_TERMINAL_PROMPT=0
+          export GIT_SSH_COMMAND="ssh -o IdentitiesOnly=yes -o IdentityFile=/dev/null"
 
           REPO_DIR=/opt/adversarialbench-src
           DEPLOY_DIR=/opt/adversarialbench
@@ -51,7 +52,5 @@ jobs:
           npm install better-sqlite3 2>/dev/null
 
           sudo systemctl restart adversarialbench
-          SCRIPT
-
-          scp /tmp/deploy.sh god@213.111.152.198:/tmp/deploy.sh
-          ssh god@213.111.152.198 "bash /tmp/deploy.sh && rm /tmp/deploy.sh"
+          echo "Deploy complete!"
+          EOF
