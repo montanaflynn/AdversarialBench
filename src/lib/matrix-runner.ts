@@ -158,7 +158,7 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
   });
   context.db.storeModels(context.runId, models);
 
-  const pairs = models.flatMap((attacker) => models.map((defender) => ({ attacker, defender })));
+  const pairs = models.flatMap((defender) => models.map((attacker) => ({ attacker, defender })));
   const limit = pLimit(context.options.concurrency);
   const active = new Set<string>();
   const grid: Record<string, MatrixProgressEvent["grid"][string]> = {};
