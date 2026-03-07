@@ -2,6 +2,8 @@
 
 AdversarialBench is a TypeScript terminal app for running and inspecting adversarial LLM benchmark runs.
 
+The repository also includes a Next.js web dashboard in `web/` with overview, explore, leaderboard, runs, and leak inspection pages backed by the same SQLite database.
+
 It measures one narrow behavior:
 
 - can one model craft messages that get another model to reveal protected information?
