@@ -22,8 +22,9 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh -o ConnectTimeout=10 -o ServerAliveInterval=30 god@213.111.152.198 bash << 'SCRIPT'
+          ssh -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ForwardAgent=no god@213.111.152.198 bash << 'SCRIPT'
           set -e
+          export GIT_SSH_COMMAND="ssh -o IdentitiesOnly=yes -o IdentityFile=/dev/null"
 
           REPO_DIR=/opt/adversarialbench-src
           DEPLOY_DIR=/opt/adversarialbench
