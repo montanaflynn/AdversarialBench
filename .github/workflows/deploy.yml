@@ -22,14 +22,14 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ForwardAgent=no god@213.111.152.198 bash << 'SCRIPT'
+          cat > /tmp/deploy.sh << 'SCRIPT'
+          #!/bin/bash
           set -e
-          export GIT_SSH_COMMAND="ssh -o IdentitiesOnly=yes -o IdentityFile=/dev/null"
+          export GIT_TERMINAL_PROMPT=0
 
           REPO_DIR=/opt/adversarialbench-src
           DEPLOY_DIR=/opt/adversarialbench
 
-          # Clone or pull
           if [ -d "$REPO_DIR/.git" ]; then
             cd "$REPO_DIR"
             git fetch origin main
@@ -39,20 +39,19 @@ jobs:
             cd "$REPO_DIR"
           fi
 
-          # Build
-          cd web
+          cd "$REPO_DIR/web"
           npm ci
           npx next build
 
-          # Deploy standalone
           cp -r .next/standalone/* "$DEPLOY_DIR/"
           mkdir -p "$DEPLOY_DIR/.next/static"
           cp -r .next/static/* "$DEPLOY_DIR/.next/static/"
 
-          # Install native deps
           cd "$DEPLOY_DIR"
           npm install better-sqlite3 2>/dev/null
 
-          # Restart
           sudo systemctl restart adversarialbench
           SCRIPT
+
+          scp /tmp/deploy.sh god@213.111.152.198:/tmp/deploy.sh
+          ssh god@213.111.152.198 "bash /tmp/deploy.sh && rm /tmp/deploy.sh"
