@@ -48,7 +48,9 @@ jobs:
           npm ci
           npx next build
 
-          cp -r .next/standalone/* "$DEPLOY_DIR/"
+          # Copy standalone (use rsync to include dotdirs like .next)
+          rsync -a .next/standalone/ "$DEPLOY_DIR/"
+          # Add static assets (not included in standalone)
           mkdir -p "$DEPLOY_DIR/.next/static"
           cp -r .next/static/* "$DEPLOY_DIR/.next/static/"
 
