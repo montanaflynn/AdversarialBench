@@ -4,7 +4,7 @@ import { resolve } from "path";
 
 function getGitInfo() {
   try {
-    const sha = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+    const sha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
     const msg = execSync("git log -1 --pretty=%s", { encoding: "utf-8" }).trim();
     return { sha, msg };
   } catch {
