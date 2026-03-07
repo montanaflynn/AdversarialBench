@@ -6,10 +6,12 @@ on:
     paths:
       - "web/**"
       - ".github/workflows/deploy.yml"
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -32,16 +34,26 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H 213.111.152.198 >> ~/.ssh/known_hosts
 
+      - name: Package
+        run: |
+          mkdir -p /tmp/deploy/.next
+          cp -r web/.next/standalone/* /tmp/deploy/
+          cp -r web/.next/static /tmp/deploy/.next/static
+          # Remove better-sqlite3 (needs native rebuild on server)
+          rm -rf /tmp/deploy/node_modules/better-sqlite3
+          tar czf /tmp/deploy.tar.gz -C /tmp/deploy .
+          ls -lh /tmp/deploy.tar.gz
+
       - name: Deploy
         run: |
-          # Stage deploy files
-          mkdir -p /tmp/deploy/.next
-          cp -r web/.next/standalone/web/* /tmp/deploy/
-          cp -r web/.next/static /tmp/deploy/.next/static
+          scp -o ConnectTimeout=10 -o ServerAliveInterval=15 \
+            /tmp/deploy.tar.gz god@213.111.152.198:/tmp/deploy.tar.gz
 
-          # Upload tarball
-          tar czf /tmp/deploy.tar.gz -C /tmp/deploy .
-          scp /tmp/deploy.tar.gz god@213.111.152.198:/tmp/deploy.tar.gz
-
-          # Extract and restart
-          ssh god@213.111.152.198 'set -e; cd /opt/adversarialbench; tar xzf /tmp/deploy.tar.gz; npm install better-sqlite3 --prefer-offline 2>/dev/null; sudo systemctl restart adversarialbench; rm /tmp/deploy.tar.gz'
+          ssh -o ConnectTimeout=10 god@213.111.152.198 bash << 'SCRIPT'
+          set -e
+          cd /opt/adversarialbench
+          tar xzf /tmp/deploy.tar.gz
+          npm install better-sqlite3 2>/dev/null
+          sudo systemctl restart adversarialbench
+          rm -f /tmp/deploy.tar.gz
+          SCRIPT

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { execSync } from "child_process";
+import { resolve } from "path";
 
 function getGitInfo() {
   try {
@@ -15,6 +16,7 @@ const git = getGitInfo();
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  outputFileTracingRoot: resolve(__dirname, "./"),
   serverExternalPackages: ["better-sqlite3"],
   env: {
     NEXT_PUBLIC_GIT_SHA: git.sha,
