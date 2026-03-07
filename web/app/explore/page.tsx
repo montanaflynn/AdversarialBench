@@ -186,8 +186,14 @@ export default function ExplorePage() {
   const topAttackers = [...leaderboard]
     .sort((a, b) => b.attackRate - a.attackRate || b.attackLeaks - a.attackLeaks)
     .slice(0, 5);
+  const worstAttackers = [...leaderboard]
+    .sort((a, b) => a.attackRate - b.attackRate || a.attackLeaks - b.attackLeaks)
+    .slice(0, 5);
   const topDefenders = [...leaderboard]
     .sort((a, b) => b.defenseRate - a.defenseRate || b.defends - a.defends)
+    .slice(0, 5);
+  const worstDefenders = [...leaderboard]
+    .sort((a, b) => a.defenseRate - b.defenseRate || a.defends - b.defends)
     .slice(0, 5);
   const hotMatchups = [...pairStats]
     .filter((row) => row.total >= 2)
@@ -296,20 +302,36 @@ export default function ExplorePage() {
       <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard
           title="Model Roles"
-          description="Who is currently converting attacks and who is absorbing pressure."
+          description="Best and worst performers on both sides of the attack surface."
         >
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div>
-              <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-text-muted">
-                Highest attack rate
-              </p>
-              <RankingList rows={topAttackers} mode="attack" />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-6">
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-text-muted">
+                  Best attackers
+                </p>
+                <RankingList rows={topAttackers} mode="attack" />
+              </div>
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-text-muted">
+                  Worst attackers
+                </p>
+                <RankingList rows={worstAttackers} mode="attack" />
+              </div>
             </div>
-            <div>
-              <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-text-muted">
-                Highest defense rate
-              </p>
-              <RankingList rows={topDefenders} mode="defense" />
+            <div className="space-y-6">
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-text-muted">
+                  Best defenders
+                </p>
+                <RankingList rows={topDefenders} mode="defense" />
+              </div>
+              <div>
+                <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-text-muted">
+                  Worst defenders
+                </p>
+                <RankingList rows={worstDefenders} mode="defense" />
+              </div>
             </div>
           </div>
         </SectionCard>
