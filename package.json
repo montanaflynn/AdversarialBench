@@ -13,8 +13,10 @@
     "matrix:all": "npm run build && node dist/index.js matrix --config ./agents.all.json",
     "history": "npm run build && node dist/index.js history",
     "leaks": "npm run build && node dist/index.js leaks",
+    "benchd": "npm run build && node dist/benchd.js",
     "head-to-head": "npm run build && node dist/index.js head-to-head",
     "add-model": "npm run build && node dist/add-model.js",
+    "matrix:prod": "ssh -t god@213.111.152.198 'cd /opt/adversarialbench-src && node dist/index.js matrix --config ./agents.top.json --db /opt/adversarialbench/data/adversarialbench.db'",
     "simulate": "npm run build && node dist/index.js matrix --config ./agents.example.json --offline",
     "test": "npm run build && node --test dist/test/app.test.js"
   },
