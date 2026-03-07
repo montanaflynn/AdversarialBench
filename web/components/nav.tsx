@@ -42,14 +42,14 @@ export function Nav() {
           })}
         </div>
         <div className="flex items-center gap-2.5 text-text-muted">
-          {process.env.NEXT_PUBLIC_GIT_SHA && (
+          {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown" && (
             <a
               href={`https://github.com/montanaflynn/AdversarialBench/commit/${process.env.NEXT_PUBLIC_GIT_SHA}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[11px] font-mono hover:text-text-secondary"
             >
-              {process.env.NEXT_PUBLIC_GIT_SHA}
+              {process.env.NEXT_PUBLIC_GIT_SHA.slice(0, 7)}
             </a>
           )}
           <a
