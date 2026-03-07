@@ -17,7 +17,11 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H 213.111.152.198 >> ~/.ssh/known_hosts
+          ssh-keyscan -p 2200 -H 213.111.152.198 >> ~/.ssh/known_hosts
+          cat >> ~/.ssh/config << 'SSHCFG'
+          Host 213.111.152.198
+            Port 2200
+          SSHCFG
 
       - name: Deploy
         timeout-minutes: 15
