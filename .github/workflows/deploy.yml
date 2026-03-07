@@ -13,20 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install dependencies
-        run: cd web && npm ci
-
-      - name: Build
-        run: cd web && npx next build
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -34,26 +20,38 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H 213.111.152.198 >> ~/.ssh/known_hosts
 
-      - name: Package
-        run: |
-          mkdir -p /tmp/deploy/.next
-          cp -r web/.next/standalone/* /tmp/deploy/
-          cp -r web/.next/static /tmp/deploy/.next/static
-          # Remove better-sqlite3 (needs native rebuild on server)
-          rm -rf /tmp/deploy/node_modules/better-sqlite3
-          tar czf /tmp/deploy.tar.gz -C /tmp/deploy .
-          ls -lh /tmp/deploy.tar.gz
-
       - name: Deploy
         run: |
-          scp -o ConnectTimeout=10 -o ServerAliveInterval=15 \
-            /tmp/deploy.tar.gz god@213.111.152.198:/tmp/deploy.tar.gz
-
-          ssh -o ConnectTimeout=10 god@213.111.152.198 bash << 'SCRIPT'
+          ssh -o ConnectTimeout=10 -o ServerAliveInterval=30 god@213.111.152.198 bash << 'SCRIPT'
           set -e
-          cd /opt/adversarialbench
-          tar xzf /tmp/deploy.tar.gz
+
+          REPO_DIR=/opt/adversarialbench-src
+          DEPLOY_DIR=/opt/adversarialbench
+
+          # Clone or pull
+          if [ -d "$REPO_DIR/.git" ]; then
+            cd "$REPO_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+          else
+            git clone https://github.com/montanaflynn/AdversarialBench.git "$REPO_DIR"
+            cd "$REPO_DIR"
+          fi
+
+          # Build
+          cd web
+          npm ci
+          npx next build
+
+          # Deploy standalone
+          cp -r .next/standalone/* "$DEPLOY_DIR/"
+          mkdir -p "$DEPLOY_DIR/.next/static"
+          cp -r .next/static/* "$DEPLOY_DIR/.next/static/"
+
+          # Install native deps
+          cd "$DEPLOY_DIR"
           npm install better-sqlite3 2>/dev/null
+
+          # Restart
           sudo systemctl restart adversarialbench
-          rm -f /tmp/deploy.tar.gz
           SCRIPT
