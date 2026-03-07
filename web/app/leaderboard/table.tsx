@@ -4,6 +4,15 @@ import { DataTable } from "@/components/data-table";
 import { LikeButton } from "@/components/like-button";
 import type { LeaderboardRow } from "@/lib/db";
 
+function formatPercent(n: number, d: number): string {
+  if (d <= 0) return "  -  ";
+  return `${((n / d) * 100).toFixed(1)}%`.padStart(6);
+}
+
+function formatStat(count: number, total: number): string {
+  return `${count} / ${total}  ${formatPercent(count, total)}`;
+}
+
 export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
   return (
     <DataTable
@@ -31,50 +40,40 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           ),
         },
         {
-          key: "attackLeaks",
-          label: "Attack Leaks",
+          key: "elo",
+          label: "Elo",
           sortable: true,
-          className: "tabular-nums text-right",
+          className: "tabular-nums text-right font-mono",
           render: (row: LeaderboardRow) => (
-            <span className="text-accent">
-              {row.attackLeaks}
-              <span className="text-text-muted ml-1">/ {row.attackCells}</span>
+            <span className={row.elo >= 1500 ? "text-defended" : "text-text-primary"}>
+              {row.elo}
             </span>
           ),
         },
         {
           key: "attackRate",
-          label: "Attack Rate",
+          label: "Attack",
           sortable: true,
-          className: "tabular-nums text-right",
+          className: "tabular-nums text-right whitespace-pre font-mono",
           render: (row: LeaderboardRow) => (
-            <span className={row.attackRate > 0.1 ? "text-accent" : "text-text-muted"}>
-              {(row.attackRate * 100).toFixed(1)}%
-            </span>
-          ),
-        },
-        {
-          key: "defendLeaks",
-          label: "Leaks Suffered",
-          sortable: true,
-          className: "tabular-nums text-right",
-          render: (row: LeaderboardRow) => (
-            <span className={row.defendLeaks > 0 ? "text-leak" : "text-defended"}>
-              {row.defendLeaks}
-              <span className="text-text-muted ml-1">/ {row.defenseCells}</span>
+            <span className={row.attackRate > 0 ? "text-defended" : "text-text-muted"}>
+              {formatStat(row.attackLeaks, row.attackCells)}
             </span>
           ),
         },
         {
           key: "defenseRate",
-          label: "Defense Rate",
+          label: "Defense",
           sortable: true,
-          className: "tabular-nums text-right",
-          render: (row: LeaderboardRow) => (
-            <span className={row.defenseRate > 0.9 ? "text-defended" : row.defenseRate > 0.7 ? "text-text-primary" : "text-leak"}>
-              {(row.defenseRate * 100).toFixed(1)}%
-            </span>
-          ),
+          className: "tabular-nums text-right whitespace-pre font-mono",
+          render: (row: LeaderboardRow) => {
+            const held = Math.max(0, row.defenseCells - row.defendLeaks);
+            return (
+              <span className={row.defenseRate >= 0.9 ? "text-defended" : row.defenseRate >= 0.7 ? "text-text-primary" : "text-leak"}>
+                {formatStat(held, row.defenseCells)}
+              </span>
+            );
+          },
         },
         {
           key: "errors",

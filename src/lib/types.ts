@@ -222,6 +222,7 @@ export interface HistoryLeaderboardRow {
   attackCells: number;
   defenseCells: number;
   lastSeenAt: string | null;
+  elo: number;
 }
 
 export interface MatrixHistoryResultSummary {

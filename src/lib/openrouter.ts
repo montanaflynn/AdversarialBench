@@ -175,6 +175,14 @@ export function extractUsageMetrics(value: JsonValue | undefined): UsageMetrics 
   return usage;
 }
 
+const REQUEST_TIMEOUT_MS = 120_000;
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 2_000;
+
+function isRetryable(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
 export async function runOpenRouterPrompt(input: {
   model: string;
   systemPrompt: string;
@@ -188,56 +196,89 @@ export async function runOpenRouterPrompt(input: {
     throw new Error("OPENROUTER_API_KEY is required for live runs.");
   }
 
-  const started = performance.now();
-  let response: Response;
-  try {
-    response = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      signal: input.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/montanaflynn/AdversarialBench",
-        "X-Title": "AdversarialBench"
-      },
-      body: JSON.stringify({
-        model: input.model,
-        messages: [
-          { role: "system", content: input.systemPrompt },
-          { role: "user", content: input.userPrompt }
-        ],
-        temperature: input.temperature,
-        ...(input.maxTokens > 0 ? { max_tokens: input.maxTokens } : {}),
-        usage: {
-          include: true
-        }
-      })
-    });
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new RunCancelledError();
+  const requestBody = JSON.stringify({
+    model: input.model,
+    messages: [
+      { role: "system", content: input.systemPrompt },
+      { role: "user", content: input.userPrompt }
+    ],
+    temperature: input.temperature,
+    ...(input.maxTokens > 0 ? { max_tokens: input.maxTokens } : {}),
+    usage: {
+      include: true
     }
-    throw error;
-  }
+  });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenRouter error ${response.status}: ${body}`);
-  }
-
-  const data = (await response.json()) as OpenRouterResponse;
-  const message = data.choices?.[0]?.message;
-  const extracted = extractMessageText(message);
-
-  if (!extracted.text) {
-    throw new Error(`OpenRouter response missing searchable text: ${JSON.stringify(message ?? null)}`);
-  }
-
-  return {
-    text: extracted.text,
-    source: extracted.source,
-    latencyMs: Math.round(performance.now() - started),
-    generationId: data.id,
-    usage: extractUsageMetrics(data.usage)
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://github.com/montanaflynn/AdversarialBench",
+    "X-Title": "AdversarialBench"
   };
+
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+    }
+
+    const started = performance.now();
+    const timeoutController = new AbortController();
+    const timeout = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+
+    const combinedSignal = input.signal
+      ? AbortSignal.any([input.signal, timeoutController.signal])
+      : timeoutController.signal;
+
+    let response: Response;
+    try {
+      response = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        signal: combinedSignal,
+        headers,
+        body: requestBody
+      });
+    } catch (error: unknown) {
+      clearTimeout(timeout);
+      if (error instanceof Error && error.name === "AbortError") {
+        if (input.signal?.aborted) {
+          throw new RunCancelledError();
+        }
+        lastError = new Error(`OpenRouter request timed out after ${REQUEST_TIMEOUT_MS / 1000}s for ${input.model}`);
+        continue;
+      }
+      lastError = error instanceof Error ? error : new Error(String(error));
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      const body = await response.text();
+      lastError = new Error(`OpenRouter error ${response.status}: ${body}`);
+      if (isRetryable(response.status)) {
+        continue;
+      }
+      throw lastError;
+    }
+
+    const data = (await response.json()) as OpenRouterResponse;
+    const message = data.choices?.[0]?.message;
+    const extracted = extractMessageText(message);
+
+    if (!extracted.text) {
+      throw new Error(`OpenRouter response missing searchable text: ${JSON.stringify(message ?? null)}`);
+    }
+
+    return {
+      text: extracted.text,
+      source: extracted.source,
+      latencyMs: Math.round(performance.now() - started),
+      generationId: data.id,
+      usage: extractUsageMetrics(data.usage)
+    };
+  }
+
+  throw lastError ?? new Error(`OpenRouter request failed after ${MAX_RETRIES + 1} attempts`);
 }

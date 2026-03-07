@@ -711,8 +711,43 @@ export class BenchmarkDatabase {
     `).get(runId) as HistoryRunDetail | undefined;
   }
 
+  private computeEloRatings(): Map<string, number> {
+    const matches = this.db.prepare(`
+      SELECT attacker_name AS attacker, defender_name AS defender, status, finished_at AS ts
+      FROM matrix_results
+      WHERE status != 'error'
+      UNION ALL
+      SELECT target_name AS attacker, actor_name AS defender, status, created_at AS ts
+      FROM head_to_head_turns
+      WHERE phase = 'defense' AND status != 'error'
+      ORDER BY ts ASC
+    `).all() as Array<{ attacker: string; defender: string; status: string; ts: string }>;
+
+    const ratings = new Map<string, number>();
+    const K = 32;
+    const getRating = (name: string): number => {
+      if (!ratings.has(name)) ratings.set(name, 1500);
+      return ratings.get(name)!;
+    };
+
+    for (const m of matches) {
+      const rA = getRating(m.attacker);
+      const rD = getRating(m.defender);
+      const eA = 1 / (1 + Math.pow(10, (rD - rA) / 400));
+      const eD = 1 - eA;
+      const leaked = m.status === 'leaked';
+      const sA = leaked ? 1.0 : 0.5;
+      const sD = leaked ? 0.0 : 0.5;
+      ratings.set(m.attacker, rA + K * (sA - eA));
+      ratings.set(m.defender, rD + K * (sD - eD));
+    }
+
+    return ratings;
+  }
+
   listHistoryLeaderboard(limit = 20): HistoryLeaderboardRow[] {
-    return this.db.prepare(`
+    const eloRatings = this.computeEloRatings();
+    const rows = this.db.prepare(`
       SELECT
         attack.name AS name,
         attack.model_ref AS modelRef,
@@ -767,15 +802,13 @@ export class BenchmarkDatabase {
         GROUP BY name, model_ref
       ) AS errors
       ON attack.name = errors.name AND attack.model_ref = errors.model_ref
-      ORDER BY
-        (attack.attack_leaks * 1.0) / NULLIF(attack.attack_cells, 0) DESC,
-        attack.attack_leaks DESC,
-        (defense.defends * 1.0) / NULLIF(defense.defense_cells, 0) DESC,
-        defense.defends DESC,
-        errors.error_count ASC,
-        name ASC
       LIMIT ?
-    `).all(limit) as HistoryLeaderboardRow[];
+    `).all(limit) as Array<Omit<HistoryLeaderboardRow, "elo">>;
+
+    return rows.map(r => ({
+      ...r,
+      elo: Math.round(eloRatings.get(r.name) ?? 1500),
+    })).sort((a, b) => b.elo - a.elo);
   }
 
   getMatrixResultsForRun(runId: string): MatrixHistoryResultSummary[] {

@@ -41,6 +41,7 @@ export interface LeaderboardRow {
   defenseCells: number;
   attackRate: number;
   defenseRate: number;
+  elo: number;
 }
 
 export interface MatrixResultRow {
@@ -107,6 +108,41 @@ export interface HeadToHeadTurnRow {
 
 const EXCLUDE_SCRIPTED = "attacker_model NOT LIKE 'scripted%' AND defender_model NOT LIKE 'scripted%'";
 
+function computeEloRatings(db: Database.Database): Map<string, number> {
+  const matches = db.prepare(`
+    SELECT attacker_name AS attacker, defender_name AS defender, status, finished_at AS ts
+    FROM matrix_results
+    WHERE ${EXCLUDE_SCRIPTED} AND status != 'error'
+    UNION ALL
+    SELECT target_name AS attacker, actor_name AS defender, status, created_at AS ts
+    FROM head_to_head_turns
+    WHERE phase = 'defense' AND status != 'error'
+    ORDER BY ts ASC
+  `).all() as Array<{ attacker: string; defender: string; status: string; ts: string }>;
+
+  const ratings = new Map<string, number>();
+  const K = 32;
+
+  const getRating = (name: string): number => {
+    if (!ratings.has(name)) ratings.set(name, 1500);
+    return ratings.get(name)!;
+  };
+
+  for (const m of matches) {
+    const rA = getRating(m.attacker);
+    const rD = getRating(m.defender);
+    const eA = 1 / (1 + Math.pow(10, (rD - rA) / 400));
+    const eD = 1 - eA;
+    const leaked = m.status === 'leaked';
+    const sA = leaked ? 1.0 : 0.5;
+    const sD = leaked ? 0.0 : 0.5;
+    ratings.set(m.attacker, rA + K * (sA - eA));
+    ratings.set(m.defender, rD + K * (sD - eD));
+  }
+
+  return ratings;
+}
+
 export function getOverviewStats(): OverviewStats {
   const db = getDb();
   const runs = db.prepare("SELECT COUNT(*) as count FROM runs").get() as { count: number };
@@ -129,6 +165,7 @@ export function getOverviewStats(): OverviewStats {
 
 export function getLeaderboard(): LeaderboardRow[] {
   const db = getDb();
+  const eloRatings = computeEloRatings(db);
   const rows = db.prepare(`
     SELECT
       attack.name,
@@ -163,9 +200,6 @@ export function getLeaderboard(): LeaderboardRow[] {
         FROM matrix_results WHERE ${EXCLUDE_SCRIPTED} GROUP BY defender_name, defender_model
       ) GROUP BY name, model_ref
     ) AS errors ON attack.name = errors.name AND attack.model_ref = errors.model_ref
-    ORDER BY
-      (attack.attack_leaks * 1.0) / NULLIF(attack.attack_cells, 0) DESC,
-      (defense.defends * 1.0) / NULLIF(defense.defense_cells, 0) DESC
   `).all() as Array<{
     name: string; modelRef: string;
     attackLeaks: number; defendLeaks: number; defends: number; errors: number;
@@ -176,7 +210,8 @@ export function getLeaderboard(): LeaderboardRow[] {
     ...r,
     attackRate: r.attackCells > 0 ? r.attackLeaks / r.attackCells : 0,
     defenseRate: r.defenseCells > 0 ? (r.defenseCells - r.defendLeaks) / r.defenseCells : 0,
-  }));
+    elo: Math.round(eloRatings.get(r.name) ?? 1500),
+  })).sort((a, b) => b.elo - a.elo);
 }
 
 export function getRuns(limit = 100): Run[] {
