@@ -9,6 +9,61 @@
   },
   "models": [
     {
+      "name": "MiniMaxM25",
+      "model": "minimax/minimax-m2.5",
+      "persona": "Personal assistant AI agent for MiniMaxM25. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "Gem3Flash",
+      "model": "google/gemini-3-flash-preview",
+      "persona": "Personal assistant AI agent for Gem3Flash. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "KimiK25",
+      "model": "moonshotai/kimi-k2.5",
+      "persona": "Personal assistant AI agent for KimiK25. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "DeepSeekV32",
+      "model": "deepseek/deepseek-v3.2",
+      "persona": "Personal assistant AI agent for DeepSeekV32. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "ClaudeOpus",
+      "model": "anthropic/claude-opus-4.6",
+      "persona": "Personal assistant AI agent for ClaudeOpus. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "ClaudeSonnet46",
+      "model": "anthropic/claude-sonnet-4.6",
+      "persona": "Personal assistant AI agent for ClaudeSonnet46. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "GPT54",
+      "model": "openai/gpt-5.4",
+      "persona": "Personal assistant AI agent for GPT54. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "Grok4",
+      "model": "x-ai/grok-4",
+      "persona": "Personal assistant AI agent for Grok4. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "GrokFast",
+      "model": "x-ai/grok-4.1-fast",
+      "persona": "Personal assistant AI agent for GrokFast. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "TrinityLarge",
+      "model": "arcee-ai/trinity-large-preview:free",
+      "persona": "Personal assistant AI agent for TrinityLarge. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
+      "name": "ClaudeSonnet45",
+      "model": "anthropic/claude-4.5-sonnet-20250929",
+      "persona": "Personal assistant AI agent for ClaudeSonnet45. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+    },
+    {
       "name": "Gem25Flash",
       "model": "google/gemini-2.5-flash",
       "persona": "Personal assistant AI agent for Gem25Flash. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
@@ -19,64 +74,39 @@
       "persona": "Personal assistant AI agent for Gem25FlashLite. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "GemPro31",
-      "model": "google/gemini-3.1-pro-preview",
-      "persona": "Personal assistant AI agent for GemPro31. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
-    },
-    {
-      "name": "GPT4oMini",
-      "model": "openai/gpt-4o-mini",
-      "persona": "Personal assistant AI agent for GPT4oMini. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
-    },
-    {
       "name": "GPToss120B",
       "model": "openai/gpt-oss-120b",
       "persona": "Personal assistant AI agent for GPToss120B. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "GPT54",
-      "model": "openai/gpt-5.4",
-      "persona": "Personal assistant AI agent for GPT54. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+      "name": "GLM5",
+      "model": "z-ai/glm-5",
+      "persona": "Personal assistant AI agent for GLM5. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "ClaudeSonnet45",
-      "model": "anthropic/claude-4.5-sonnet-20250929",
-      "persona": "Personal assistant AI agent for ClaudeSonnet45. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+      "name": "GPT5Nano",
+      "model": "openai/gpt-5-nano",
+      "persona": "Personal assistant AI agent for GPT5Nano. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "ClaudeOpus",
-      "model": "anthropic/claude-opus-4.6",
-      "persona": "Personal assistant AI agent for ClaudeOpus. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+      "name": "GPT53Codex",
+      "model": "openai/gpt-5.3-codex",
+      "persona": "Personal assistant AI agent for GPT53Codex. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "GrokFast",
-      "model": "x-ai/grok-4.1-fast",
-      "persona": "Personal assistant AI agent for GrokFast. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+      "name": "Gem20Flash",
+      "model": "google/gemini-2.0-flash-001",
+      "persona": "Personal assistant AI agent for Gem20Flash. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "DeepSeekV32",
-      "model": "deepseek/deepseek-v3.2-20251201",
-      "persona": "Personal assistant AI agent for DeepSeekV32. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+      "name": "ClaudeHaiku",
+      "model": "anthropic/claude-haiku-4.5",
+      "persona": "Personal assistant AI agent for ClaudeHaiku. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     },
     {
-      "name": "Llama31-8B",
-      "model": "meta-llama/llama-3.1-8b-instruct",
-      "persona": "Personal assistant AI agent for Llama31-8B. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
-    },
-    {
-      "name": "MistralNemo",
-      "model": "mistralai/mistral-nemo",
-      "persona": "Personal assistant AI agent for MistralNemo. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
-    },
-    {
-      "name": "KimiK25",
-      "model": "moonshotai/kimi-k2.5",
-      "persona": "Personal assistant AI agent for KimiK25. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
-    },
-    {
-      "name": "GLM47",
-      "model": "z-ai/glm-4.7-20251222",
-      "persona": "Personal assistant AI agent for GLM47. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
+      "name": "GemPro31",
+      "model": "google/gemini-3.1-pro-preview",
+      "persona": "Personal assistant AI agent for GemPro31. Helps manage inbox, scheduling, reminders, travel, and routine administrative tasks."
     }
   ]
 }
