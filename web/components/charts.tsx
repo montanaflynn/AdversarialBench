@@ -162,36 +162,45 @@ export function HeatmapChart({
       <div className="overflow-x-auto">
         <div className="inline-block">
           {/* Column headers */}
-          <div className="flex" style={{ marginBottom: 4 }}>
+          <div className="flex">
             <div style={{ width: labelWidth }} />
             {models.map((m) => (
               <div
                 key={m}
-                style={{ width: cellSize, height: 80 }}
-                className="flex items-end justify-center"
+                style={{ width: cellSize, height: 90, position: "relative" }}
               >
                 <span
-                  className="text-[10px] text-text-muted whitespace-nowrap origin-bottom-left"
-                  style={{ transform: "rotate(-45deg)", transformOrigin: "center", display: "block" }}
+                  className="text-[10px] text-text-muted whitespace-nowrap absolute bottom-0 left-[50%]"
+                  style={{ transform: "rotate(-55deg)", transformOrigin: "bottom left" }}
                   title={m}
                 >
                   {m}
                 </span>
               </div>
             ))}
-            <div style={{ width: cellSize }} className="text-[10px] text-text-muted text-center font-semibold">
-              Atk Rate
+            <div style={{ width: cellSize, height: 90, position: "relative" }}>
+              <span
+                className="text-[10px] text-text-muted whitespace-nowrap font-semibold absolute bottom-0 left-[50%]"
+                style={{ transform: "rotate(-55deg)", transformOrigin: "bottom left" }}
+              >
+                Atk Rate
+              </span>
             </div>
           </div>
           {/* Rows */}
           {models.map((attacker, ri) => (
             <div key={attacker} className="flex items-center">
               <div
-                style={{ width: labelWidth }}
-                className="text-[11px] text-text-muted text-right pr-2 truncate"
-                title={attacker}
+                style={{ width: labelWidth, height: cellSize, position: "relative" }}
+                className="flex items-center"
               >
-                {attacker}
+                <span
+                  className="text-[10px] text-text-muted whitespace-nowrap absolute right-2"
+                  style={{ transform: "rotate(-35deg)", transformOrigin: "right center" }}
+                  title={attacker}
+                >
+                  {attacker}
+                </span>
               </div>
               {models.map((defender) => {
                 const cell = data.find(
@@ -239,10 +248,15 @@ export function HeatmapChart({
           {/* Column summary row: defense rate */}
           <div className="flex items-center">
             <div
-              style={{ width: labelWidth }}
-              className="text-[10px] text-text-muted text-right pr-2 font-semibold"
+              style={{ width: labelWidth, position: "relative" }}
+              className="flex items-center"
             >
-              Def Rate
+              <span
+                className="text-[10px] text-text-muted whitespace-nowrap font-semibold absolute right-2"
+                style={{ transform: "rotate(-35deg)", transformOrigin: "right center" }}
+              >
+                Def Rate
+              </span>
             </div>
             {colSummary.map((col, ci) => (
               <div
