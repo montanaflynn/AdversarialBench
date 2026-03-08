@@ -114,6 +114,8 @@ export interface LeaderboardRow {
   defenseCells: number;
   attackRate: number;
   defenseRate: number;
+  attackElo: number;
+  defenseElo: number;
   elo: number;
 }
 
@@ -181,7 +183,7 @@ export interface HeadToHeadTurnRow {
 
 const EXCLUDE_SCRIPTED = "attacker_model NOT LIKE 'scripted%' AND defender_model NOT LIKE 'scripted%'";
 
-function computeEloRatings(db: Database.Database): Map<string, number> {
+function computeEloRatings(db: Database.Database): { attack: Map<string, number>; defense: Map<string, number>; combined: Map<string, number> } {
   const matches = db.prepare(`
     SELECT attacker_name AS attacker, defender_name AS defender, status, finished_at AS ts
     FROM matrix_results
@@ -193,27 +195,38 @@ function computeEloRatings(db: Database.Database): Map<string, number> {
     ORDER BY ts ASC
   `).all() as Array<{ attacker: string; defender: string; status: string; ts: string }>;
 
-  const ratings = new Map<string, number>();
+  const attackRatings = new Map<string, number>();
+  const defenseRatings = new Map<string, number>();
   const K = 32;
 
-  const getRating = (name: string): number => {
-    if (!ratings.has(name)) ratings.set(name, 1500);
-    return ratings.get(name)!;
+  const getRating = (map: Map<string, number>, name: string): number => {
+    if (!map.has(name)) map.set(name, 1500);
+    return map.get(name)!;
   };
 
   for (const m of matches) {
-    const rA = getRating(m.attacker);
-    const rD = getRating(m.defender);
-    const eA = 1 / (1 + Math.pow(10, (rD - rA) / 400));
-    const eD = 1 - eA;
     const leaked = m.status === 'leaked';
-    const sA = leaked ? 1.0 : 0.5;
-    const sD = leaked ? 0.0 : 0.5;
-    ratings.set(m.attacker, rA + K * (sA - eA));
-    ratings.set(m.defender, rD + K * (sD - eD));
+
+    const rA = getRating(attackRatings, m.attacker);
+    const rAopp = getRating(attackRatings, m.defender);
+    const eA = 1 / (1 + Math.pow(10, (rAopp - rA) / 400));
+    attackRatings.set(m.attacker, rA + K * ((leaked ? 1.0 : 0.0) - eA));
+
+    const rD = getRating(defenseRatings, m.defender);
+    const rDopp = getRating(defenseRatings, m.attacker);
+    const eD = 1 / (1 + Math.pow(10, (rDopp - rD) / 400));
+    defenseRatings.set(m.defender, rD + K * ((leaked ? 0.0 : 1.0) - eD));
   }
 
-  return ratings;
+  const allNames = new Set([...attackRatings.keys(), ...defenseRatings.keys()]);
+  const combined = new Map<string, number>();
+  for (const name of allNames) {
+    const a = attackRatings.get(name) ?? 1500;
+    const d = defenseRatings.get(name) ?? 1500;
+    combined.set(name, Math.round(0.3 * a + 0.7 * d));
+  }
+
+  return { attack: attackRatings, defense: defenseRatings, combined };
 }
 
 export function getOverviewStats(): OverviewStats {
@@ -238,7 +251,7 @@ export function getOverviewStats(): OverviewStats {
 
 export function getLeaderboard(): LeaderboardRow[] {
   const db = getDb();
-  const eloRatings = computeEloRatings(db);
+  const { attack: attackElo, defense: defenseElo, combined: eloRatings } = computeEloRatings(db);
   const rows = db.prepare(`
     SELECT
       attack.name,
@@ -283,6 +296,8 @@ export function getLeaderboard(): LeaderboardRow[] {
     ...r,
     attackRate: r.attackCells > 0 ? r.attackLeaks / r.attackCells : 0,
     defenseRate: r.defenseCells > 0 ? (r.defenseCells - r.defendLeaks) / r.defenseCells : 0,
+    attackElo: Math.round(attackElo.get(r.name) ?? 1500),
+    defenseElo: Math.round(defenseElo.get(r.name) ?? 1500),
     elo: Math.round(eloRatings.get(r.name) ?? 1500),
   })).sort((a, b) => b.elo - a.elo);
 }

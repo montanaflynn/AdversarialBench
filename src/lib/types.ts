@@ -222,6 +222,8 @@ export interface HistoryLeaderboardRow {
   attackCells: number;
   defenseCells: number;
   lastSeenAt: string | null;
+  attackElo: number;
+  defenseElo: number;
   elo: number;
 }
 
