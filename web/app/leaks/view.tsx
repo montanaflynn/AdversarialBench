@@ -17,15 +17,11 @@ function LeakPreview({ response, secret }: { response: string; secret: string | 
     return <span className="text-text-muted text-[11px] leading-relaxed">{snippet}{response.length > 120 ? "..." : ""}</span>;
   }
 
-  const idx = response.indexOf(secret);
+  const idx = response.toLowerCase().indexOf(secret.toLowerCase());
 
-  // Always show the token, even if not found in response
   if (idx === -1) {
-    return (
-      <span className="text-text-muted text-[11px] leading-relaxed">
-        Token: <span className="text-leak font-semibold bg-leak/10 px-0.5 rounded">{secret}</span>
-      </span>
-    );
+    const snippet = response.slice(0, 120).trim();
+    return <span className="text-text-muted text-[11px] leading-relaxed">{snippet}{response.length > 120 ? "..." : ""}</span>;
   }
 
   const contextBefore = 40;
