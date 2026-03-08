@@ -178,7 +178,7 @@ test("matrix history persists usage metadata when provided", () => {
   db.storeModels("usage-test-run", [attacker, defender]);
   db.insertMatrixAttemptWithModels("usage-test-run", attacker, defender, {
     attemptNumber: 1,
-    status: "resisted",
+    status: "defended",
     attackPrompt: "attack prompt",
     attackMessage: "attack message",
     defensePrompt: "defense prompt",

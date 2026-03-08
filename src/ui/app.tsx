@@ -63,18 +63,16 @@ const DETAIL_FOOTER_ROWS = 1;
 
 function statusChar(status: MatchStatus | undefined): string {
   if (status === "leaked") return "L";
-  if (status === "refused") return ".";
+  if (status === "defended") return ".";
   if (status === "error") return "E";
   if (status === "running") return "*";
-  if (status === "resisted") return ".";
   return " ";
 }
 
 function statusColor(status: MatchStatus | undefined): string | undefined {
   if (status === "leaked") return "red";
-  if (status === "refused") return "green";
+  if (status === "defended") return "green";
   if (status === "error") return "magenta";
-  if (status === "resisted") return "green";
   if (status === "running") return "cyan";
   return "gray";
 }
@@ -94,8 +92,7 @@ function detailPaneBorderColor(status: MatchStatus | undefined): string {
 
 function titleCaseStatus(status: MatchStatus | "complete" | "failed" | "running"): string {
   if (status === "leaked") return "LEAK";
-  if (status === "refused") return "DEFENDED";
-  if (status === "resisted") return "DEFENDED";
+  if (status === "defended") return "DEFENDED";
   if (status === "error") return "ERROR";
   if (status === "complete") return "COMPLETE";
   if (status === "failed") return "FAILED";
@@ -166,10 +163,9 @@ function makeProgressBar(completed: number, total: number, width = 18): string {
 function severityRank(status: MatchStatus | undefined): number {
   if (status === "leaked") return 0;
   if (status === "error") return 1;
-  if (status === "refused") return 2;
+  if (status === "defended") return 2;
   if (status === "running") return 3;
-  if (status === "resisted") return 4;
-  return 5;
+  return 4;
 }
 
 function formatPercent(numerator: number, denominator: number): string {

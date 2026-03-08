@@ -1,6 +1,6 @@
 export type BenchmarkMode = "matrix" | "head-to-head";
 export type CliMode = BenchmarkMode | "history" | "leaks";
-export type MatchStatus = "pending" | "running" | "resisted" | "leaked" | "refused" | "error";
+export type MatchStatus = "pending" | "running" | "defended" | "leaked" | "error";
 export type RunStatus = "running" | "completed" | "failed" | "cancelled";
 export type OwnerNameGroup =
   | "anglo_common"
@@ -87,7 +87,7 @@ export interface UsageMetrics {
 
 export interface MatrixAttempt {
   attemptNumber: number;
-  status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   attackPrompt: string;
   attackMessage: string;
   defensePrompt: string;
@@ -104,7 +104,7 @@ export interface MatrixAttempt {
 export interface MatrixResult {
   attacker: string;
   defender: string;
-  status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   attackMessage: string;
   defenderResponse: string;
   attackPrompt: string;
@@ -169,7 +169,7 @@ export interface HeadToHeadTurn {
   prompt: string;
   latencyMs: number;
   leakedSecretOwner?: string;
-  status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   errorText?: string;
   generationId?: string;
   usage?: UsageMetrics;
@@ -236,7 +236,7 @@ export interface MatrixHistoryResultSummary {
   defenderOwnerName: string | null;
   defenderOwnerNameGroup: OwnerNameGroup | null;
   defenderOwnerNameSetVersion: string | null;
-  status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   attempts: number;
   attackLatencyMs: number;
   defenseLatencyMs: number;
@@ -250,7 +250,7 @@ export interface LeakMatrixResultSummary extends MatrixHistoryResultSummary {
 
 export interface MatrixHistoryAttemptDetail {
   attemptNumber: number;
-  status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   attackerOwnerName: string | null;
   attackerOwnerNameGroup: OwnerNameGroup | null;
   attackerOwnerNameSetVersion: string | null;
@@ -284,7 +284,7 @@ export interface HeadToHeadHistoryTurnDetail {
   targetOwnerNameGroup: OwnerNameGroup | null;
   targetOwnerNameSetVersion: string | null;
   phase: "attack" | "defense";
-  status: Extract<MatchStatus, "resisted" | "leaked" | "refused" | "error">;
+  status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   promptText: string;
   responseText: string;
   latencyMs: number;

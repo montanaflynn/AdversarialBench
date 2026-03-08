@@ -649,7 +649,7 @@ export class BenchmarkDatabase {
           run_id,
           COUNT(*) AS total_items,
           SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-          SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+          SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
           SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
         FROM matrix_results
         GROUP BY run_id
@@ -659,7 +659,7 @@ export class BenchmarkDatabase {
           run_id,
           COUNT(*) AS total_items,
           SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-          SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+          SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
           SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
         FROM head_to_head_turns
         GROUP BY run_id
@@ -692,7 +692,7 @@ export class BenchmarkDatabase {
           run_id,
           COUNT(*) AS total_items,
           SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-          SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+          SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
           SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
         FROM matrix_results
         GROUP BY run_id
@@ -702,7 +702,7 @@ export class BenchmarkDatabase {
           run_id,
           COUNT(*) AS total_items,
           SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-          SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+          SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
           SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
         FROM head_to_head_turns
         GROUP BY run_id
@@ -774,7 +774,7 @@ export class BenchmarkDatabase {
           defender_model AS model_ref,
           COUNT(*) AS defense_cells,
           SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS defend_leaks,
-          SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defends,
+          SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defends,
           MAX(finished_at) AS last_seen_at
         FROM matrix_results
         GROUP BY defender_name, defender_model
@@ -842,7 +842,7 @@ export class BenchmarkDatabase {
         CASE status
           WHEN 'leaked' THEN 0
           WHEN 'error' THEN 1
-          WHEN 'refused' THEN 2
+          WHEN 'defended' THEN 2
           ELSE 3
         END,
         finished_at DESC,

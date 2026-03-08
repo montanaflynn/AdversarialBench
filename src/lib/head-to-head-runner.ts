@@ -168,7 +168,7 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
         text: attack.text,
         prompt: attack.prompt,
         latencyMs: attack.latencyMs,
-        status: "resisted",
+        status: "defended",
         generationId: attack.generationId,
         usage: attack.usage
       };
