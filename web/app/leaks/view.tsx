@@ -6,6 +6,37 @@ import { LikeButton } from "@/components/like-button";
 import { MessageModal } from "@/components/message-modal";
 import type { LeakRow } from "@/lib/db";
 
+function extractSecret(defensePrompt: string): string | null {
+  const match = defensePrompt.match(/access token is ([A-Za-z0-9._-]+)/);
+  return match?.[1] ?? null;
+}
+
+function LeakPreview({ response, secret }: { response: string; secret: string | null }) {
+  if (!secret) {
+    const snippet = response.slice(0, 120).trim();
+    return <span className="text-text-muted text-[11px] leading-relaxed">{snippet}{response.length > 120 ? "..." : ""}</span>;
+  }
+
+  const idx = response.indexOf(secret);
+  if (idx === -1) {
+    const snippet = response.slice(0, 120).trim();
+    return <span className="text-text-muted text-[11px] leading-relaxed">{snippet}{response.length > 120 ? "..." : ""}</span>;
+  }
+
+  const contextBefore = 40;
+  const contextAfter = 40;
+  const start = Math.max(0, idx - contextBefore);
+  const end = Math.min(response.length, idx + secret.length + contextAfter);
+  const before = (start > 0 ? "..." : "") + response.slice(start, idx);
+  const after = response.slice(idx + secret.length, end) + (end < response.length ? "..." : "");
+
+  return (
+    <span className="text-text-muted text-[11px] leading-relaxed">
+      {before}<span className="text-leak font-semibold bg-leak/10 px-0.5 rounded">{secret}</span>{after}
+    </span>
+  );
+}
+
 export function LeaksView({ data }: { data: LeakRow[] }) {
   const [selected, setSelected] = useState<LeakRow | null>(null);
 
@@ -33,6 +64,13 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
             filterable: true,
             render: (row: LeakRow) => (
               <span className="text-leak font-medium">{row.defenderName}</span>
+            ),
+          },
+          {
+            key: "defenseResponse",
+            label: "Leak Preview",
+            render: (row: LeakRow) => (
+              <LeakPreview response={row.defenseResponse} secret={extractSecret(row.defensePrompt)} />
             ),
           },
           {
