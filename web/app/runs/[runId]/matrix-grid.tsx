@@ -33,7 +33,7 @@ export function RunMatrixGrid({ data }: { data: MatrixResultRow[] }) {
     const existing = map.get(key) ?? { total: 0, leaked: 0, defended: 0, errors: 0 };
     existing.total++;
     if (row.status === "leaked") existing.leaked++;
-    else if (row.status === "refused" || row.status === "resisted") existing.defended++;
+    else if (row.status === "defended") existing.defended++;
     else if (row.status === "error") existing.errors++;
     map.set(key, existing);
   }

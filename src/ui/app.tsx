@@ -63,18 +63,16 @@ const DETAIL_FOOTER_ROWS = 1;
 
 function statusChar(status: MatchStatus | undefined): string {
   if (status === "leaked") return "L";
-  if (status === "refused") return ".";
+  if (status === "defended") return ".";
   if (status === "error") return "E";
   if (status === "running") return "*";
-  if (status === "resisted") return ".";
   return " ";
 }
 
 function statusColor(status: MatchStatus | undefined): string | undefined {
   if (status === "leaked") return "red";
-  if (status === "refused") return "green";
+  if (status === "defended") return "green";
   if (status === "error") return "magenta";
-  if (status === "resisted") return "green";
   if (status === "running") return "cyan";
   return "gray";
 }
@@ -94,8 +92,7 @@ function detailPaneBorderColor(status: MatchStatus | undefined): string {
 
 function titleCaseStatus(status: MatchStatus | "complete" | "failed" | "running"): string {
   if (status === "leaked") return "LEAK";
-  if (status === "refused") return "DEFENDED";
-  if (status === "resisted") return "DEFENDED";
+  if (status === "defended") return "DEFENDED";
   if (status === "error") return "ERROR";
   if (status === "complete") return "COMPLETE";
   if (status === "failed") return "FAILED";
@@ -166,10 +163,9 @@ function makeProgressBar(completed: number, total: number, width = 18): string {
 function severityRank(status: MatchStatus | undefined): number {
   if (status === "leaked") return 0;
   if (status === "error") return 1;
-  if (status === "refused") return 2;
+  if (status === "defended") return 2;
   if (status === "running") return 3;
-  if (status === "resisted") return 4;
-  return 5;
+  return 4;
 }
 
 function formatPercent(numerator: number, denominator: number): string {
@@ -199,29 +195,7 @@ function defenseHeldCount(row: HistoryLeaderboardRow): number {
 }
 
 function sortLeaderboardRows(rows: HistoryLeaderboardRow[]): HistoryLeaderboardRow[] {
-  return [...rows].sort((a, b) => {
-    const attackRateA = a.attackCells > 0 ? a.attackLeaks / a.attackCells : 0;
-    const attackRateB = b.attackCells > 0 ? b.attackLeaks / b.attackCells : 0;
-    if (attackRateB !== attackRateA) {
-      return attackRateB - attackRateA;
-    }
-    if (b.attackLeaks !== a.attackLeaks) {
-      return b.attackLeaks - a.attackLeaks;
-    }
-
-    const defenseRateA = a.defenseCells > 0 ? defenseHeldCount(a) / a.defenseCells : 0;
-    const defenseRateB = b.defenseCells > 0 ? defenseHeldCount(b) / b.defenseCells : 0;
-    if (defenseRateB !== defenseRateA) {
-      return defenseRateB - defenseRateA;
-    }
-    if (defenseHeldCount(b) !== defenseHeldCount(a)) {
-      return defenseHeldCount(b) - defenseHeldCount(a);
-    }
-    if (a.errors !== b.errors) {
-      return a.errors - b.errors;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  return [...rows].sort((a, b) => b.elo - a.elo);
 }
 
 function visibleLeaderboardRows(rows: HistoryLeaderboardRow[]): HistoryLeaderboardRow[] {
@@ -503,6 +477,7 @@ function HistoryView(props: {
       Math.floor(topPaneInnerWidth * 0.4)
     )
   );
+  const historyEloWidth = Math.max(4, "Elo".length, ...displayLeaderboard.map((row) => String(row.elo).length));
   const historyAttackWidth = Math.max(16, "Attack".length, ...displayLeaderboard.map((row) => formatCountPercent(row.attackLeaks, row.attackCells).length));
   const historyDefenseWidth = Math.max(16, "Defense".length, ...displayLeaderboard.map((row) => formatCountPercent(defenseHeldCount(row), row.defenseCells).length));
 
@@ -608,11 +583,11 @@ function HistoryView(props: {
             hotkeyActive={props.focusPane === "leaderboard"}
             hotkeyNote={leaderboardNote}
           >
-            <Text>{`${(props.leaderboardLabelMode === "model" ? "Model Ref" : "Name").padEnd(historyLeaderboardNameWidth)}  ${rightAlign("Attack", historyAttackWidth)}  ${rightAlign("Defense", historyDefenseWidth)}`}</Text>
-            <Text color="gray">{`${"-".repeat(historyLeaderboardNameWidth)}  ${"-".repeat(historyAttackWidth)}  ${"-".repeat(historyDefenseWidth)}`}</Text>
+            <Text>{`${(props.leaderboardLabelMode === "model" ? "Model Ref" : "Name").padEnd(historyLeaderboardNameWidth)}  ${rightAlign("Elo", historyEloWidth)}  ${rightAlign("Attack", historyAttackWidth)}  ${rightAlign("Defense", historyDefenseWidth)}`}</Text>
+            <Text color="gray">{`${"-".repeat(historyLeaderboardNameWidth)}  ${"-".repeat(historyEloWidth)}  ${"-".repeat(historyAttackWidth)}  ${"-".repeat(historyDefenseWidth)}`}</Text>
             {displayLeaderboard.slice(0, Math.max(1, listVisibleLines - 2)).map((row) => (
               <Text key={`history-leader-${row.name}`}>
-                {`${compactName(props.leaderboardLabelMode === "model" ? row.modelRef : row.name, historyLeaderboardNameWidth)}  ${rightAlign(formatCountPercent(row.attackLeaks, row.attackCells), historyAttackWidth)}  ${rightAlign(formatCountPercent(defenseHeldCount(row), row.defenseCells), historyDefenseWidth)}`}
+                {`${compactName(props.leaderboardLabelMode === "model" ? row.modelRef : row.name, historyLeaderboardNameWidth)}  ${rightAlign(String(row.elo), historyEloWidth)}  ${rightAlign(formatCountPercent(row.attackLeaks, row.attackCells), historyAttackWidth)}  ${rightAlign(formatCountPercent(defenseHeldCount(row), row.defenseCells), historyDefenseWidth)}`}
               </Text>
             ))}
           </Panel>
@@ -944,6 +919,7 @@ function MatrixView(props: {
       Math.floor(topPaneInnerWidth * 0.42)
     )
   );
+  const leaderboardEloWidth = Math.max(4, "Elo".length, ...currentLeaderboard.map((row) => String(row.elo).length));
   const leaderboardAttackWidth = Math.max(16, "Attack".length, ...attackColumnValues.map((value) => value.length));
   const leaderboardDefenseWidth = Math.max(16, "Defense".length, ...defenseColumnValues.map((value) => value.length));
   const promptLines = !activeResult
@@ -1013,16 +989,16 @@ function MatrixView(props: {
             hotkeyLabel="2"
             hotkeyActive={props.focusPane === "leaderboard"}
           >
-            <Text>{`${"Model".padEnd(leaderboardNameWidth)}  ${rightAlign("Attack", leaderboardAttackWidth)}  ${rightAlign("Defense", leaderboardDefenseWidth)}`}</Text>
+            <Text>{`${"Model".padEnd(leaderboardNameWidth)}  ${rightAlign("Elo", leaderboardEloWidth)}  ${rightAlign("Attack", leaderboardAttackWidth)}  ${rightAlign("Defense", leaderboardDefenseWidth)}`}</Text>
             <Text color="gray">
-              {`${"-".repeat(leaderboardNameWidth)}  ${"-".repeat(leaderboardAttackWidth)}  ${"-".repeat(leaderboardDefenseWidth)}`}
+              {`${"-".repeat(leaderboardNameWidth)}  ${"-".repeat(leaderboardEloWidth)}  ${"-".repeat(leaderboardAttackWidth)}  ${"-".repeat(leaderboardDefenseWidth)}`}
             </Text>
             {currentLeaderboard.map((row, index) => (
               <Text
                 key={`leader-${row.name}`}
                 color={activeResult && (activeResult.attacker === row.name || activeResult.defender === row.name) ? "cyan" : undefined}
               >
-                {`${compactName(row.name, leaderboardNameWidth)}  ${rightAlign(attackColumnValues[index] ?? "-", leaderboardAttackWidth)}  ${rightAlign(defenseColumnValues[index] ?? "-", leaderboardDefenseWidth)}`}
+                {`${compactName(row.name, leaderboardNameWidth)}  ${rightAlign(String(row.elo), leaderboardEloWidth)}  ${rightAlign(attackColumnValues[index] ?? "-", leaderboardAttackWidth)}  ${rightAlign(defenseColumnValues[index] ?? "-", leaderboardDefenseWidth)}`}
               </Text>
             ))}
           </Panel>

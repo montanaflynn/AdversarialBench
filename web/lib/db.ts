@@ -41,6 +41,7 @@ export interface LeaderboardRow {
   defenseCells: number;
   attackRate: number;
   defenseRate: number;
+  elo: number;
 }
 
 export interface MatrixResultRow {
@@ -107,12 +108,47 @@ export interface HeadToHeadTurnRow {
 
 const EXCLUDE_SCRIPTED = "attacker_model NOT LIKE 'scripted%' AND defender_model NOT LIKE 'scripted%'";
 
+function computeEloRatings(db: Database.Database): Map<string, number> {
+  const matches = db.prepare(`
+    SELECT attacker_name AS attacker, defender_name AS defender, status, finished_at AS ts
+    FROM matrix_results
+    WHERE ${EXCLUDE_SCRIPTED} AND status != 'error'
+    UNION ALL
+    SELECT target_name AS attacker, actor_name AS defender, status, created_at AS ts
+    FROM head_to_head_turns
+    WHERE phase = 'defense' AND status != 'error'
+    ORDER BY ts ASC
+  `).all() as Array<{ attacker: string; defender: string; status: string; ts: string }>;
+
+  const ratings = new Map<string, number>();
+  const K = 32;
+
+  const getRating = (name: string): number => {
+    if (!ratings.has(name)) ratings.set(name, 1500);
+    return ratings.get(name)!;
+  };
+
+  for (const m of matches) {
+    const rA = getRating(m.attacker);
+    const rD = getRating(m.defender);
+    const eA = 1 / (1 + Math.pow(10, (rD - rA) / 400));
+    const eD = 1 - eA;
+    const leaked = m.status === 'leaked';
+    const sA = leaked ? 1.0 : 0.5;
+    const sD = leaked ? 0.0 : 0.5;
+    ratings.set(m.attacker, rA + K * (sA - eA));
+    ratings.set(m.defender, rD + K * (sD - eD));
+  }
+
+  return ratings;
+}
+
 export function getOverviewStats(): OverviewStats {
   const db = getDb();
   const runs = db.prepare("SELECT COUNT(*) as count FROM runs").get() as { count: number };
   const results = db.prepare(`SELECT COUNT(*) as count FROM matrix_results WHERE ${EXCLUDE_SCRIPTED}`).get() as { count: number };
   const leaks = db.prepare(`SELECT COUNT(*) as count FROM matrix_results WHERE status = 'leaked' AND ${EXCLUDE_SCRIPTED}`).get() as { count: number };
-  const defended = db.prepare(`SELECT COUNT(*) as count FROM matrix_results WHERE status IN ('refused', 'resisted') AND ${EXCLUDE_SCRIPTED}`).get() as { count: number };
+  const defended = db.prepare(`SELECT COUNT(*) as count FROM matrix_results WHERE status = 'defended' AND ${EXCLUDE_SCRIPTED}`).get() as { count: number };
   const errors = db.prepare(`SELECT COUNT(*) as count FROM matrix_results WHERE status = 'error' AND ${EXCLUDE_SCRIPTED}`).get() as { count: number };
   const models = db.prepare(`SELECT COUNT(DISTINCT attacker_name) as count FROM matrix_results WHERE ${EXCLUDE_SCRIPTED}`).get() as { count: number };
 
@@ -129,6 +165,7 @@ export function getOverviewStats(): OverviewStats {
 
 export function getLeaderboard(): LeaderboardRow[] {
   const db = getDb();
+  const eloRatings = computeEloRatings(db);
   const rows = db.prepare(`
     SELECT
       attack.name,
@@ -149,7 +186,7 @@ export function getLeaderboard(): LeaderboardRow[] {
       SELECT defender_name AS name, defender_model AS model_ref,
              COUNT(*) AS defense_cells,
              SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS defend_leaks,
-             SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defends
+             SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defends
       FROM matrix_results WHERE ${EXCLUDE_SCRIPTED} GROUP BY defender_name, defender_model
     ) AS defense ON attack.name = defense.name AND attack.model_ref = defense.model_ref
     LEFT JOIN (
@@ -163,9 +200,6 @@ export function getLeaderboard(): LeaderboardRow[] {
         FROM matrix_results WHERE ${EXCLUDE_SCRIPTED} GROUP BY defender_name, defender_model
       ) GROUP BY name, model_ref
     ) AS errors ON attack.name = errors.name AND attack.model_ref = errors.model_ref
-    ORDER BY
-      (attack.attack_leaks * 1.0) / NULLIF(attack.attack_cells, 0) DESC,
-      (defense.defends * 1.0) / NULLIF(defense.defense_cells, 0) DESC
   `).all() as Array<{
     name: string; modelRef: string;
     attackLeaks: number; defendLeaks: number; defends: number; errors: number;
@@ -176,7 +210,8 @@ export function getLeaderboard(): LeaderboardRow[] {
     ...r,
     attackRate: r.attackCells > 0 ? r.attackLeaks / r.attackCells : 0,
     defenseRate: r.defenseCells > 0 ? (r.defenseCells - r.defendLeaks) / r.defenseCells : 0,
-  }));
+    elo: Math.round(eloRatings.get(r.name) ?? 1500),
+  })).sort((a, b) => b.elo - a.elo);
 }
 
 export function getRuns(limit = 100): Run[] {
@@ -201,7 +236,7 @@ export function getRuns(limit = 100): Run[] {
       SELECT run_id,
         COUNT(*) AS total_items,
         SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-        SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+        SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
       FROM matrix_results WHERE ${EXCLUDE_SCRIPTED} GROUP BY run_id
     ) AS mc ON mc.run_id = runs.run_id
@@ -209,7 +244,7 @@ export function getRuns(limit = 100): Run[] {
       SELECT run_id,
         COUNT(*) AS total_items,
         SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-        SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+        SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
       FROM head_to_head_turns GROUP BY run_id
     ) AS hc ON hc.run_id = runs.run_id
@@ -240,7 +275,7 @@ export function getRunDetail(runId: string): Run | undefined {
       SELECT run_id,
         COUNT(*) AS total_items,
         SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-        SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+        SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
       FROM matrix_results WHERE ${EXCLUDE_SCRIPTED} GROUP BY run_id
     ) AS mc ON mc.run_id = runs.run_id
@@ -248,7 +283,7 @@ export function getRunDetail(runId: string): Run | undefined {
       SELECT run_id,
         COUNT(*) AS total_items,
         SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leak_count,
-        SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended_count,
+        SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended_count,
         SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count
       FROM head_to_head_turns GROUP BY run_id
     ) AS hc ON hc.run_id = runs.run_id
@@ -310,7 +345,7 @@ export function getModelPairStats(): ModelPairStats[] {
       defender_name AS defenderName,
       COUNT(*) AS total,
       SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leaks,
-      SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended,
+      SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended,
       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors
     FROM matrix_results
     WHERE ${EXCLUDE_SCRIPTED}
@@ -354,7 +389,7 @@ export function getLeakTrend(): Array<{ date: string; leaks: number; defended: n
     SELECT
       DATE(finished_at) AS date,
       SUM(CASE WHEN status = 'leaked' THEN 1 ELSE 0 END) AS leaks,
-      SUM(CASE WHEN status IN ('refused', 'resisted') THEN 1 ELSE 0 END) AS defended,
+      SUM(CASE WHEN status = 'defended' THEN 1 ELSE 0 END) AS defended,
       COUNT(*) AS total
     FROM matrix_results
     WHERE finished_at IS NOT NULL AND ${EXCLUDE_SCRIPTED}
