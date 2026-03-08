@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { resolve } from "path";
+import { mkdirSync } from "fs";
 
 const DB_PATH = process.env.AB_DB_PATH
   ?? resolve(process.cwd(), "../data/adversarialbench.db");
@@ -8,8 +9,80 @@ let _db: Database.Database | null = null;
 
 function getDb(): Database.Database {
   if (!_db) {
-    _db = new Database(DB_PATH, { readonly: true });
+    mkdirSync(resolve(DB_PATH, ".."), { recursive: true });
+    _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS runs (
+        run_id TEXT PRIMARY KEY, mode TEXT NOT NULL, status TEXT NOT NULL,
+        config_path TEXT NOT NULL, config_snapshot TEXT NOT NULL,
+        started_at TEXT NOT NULL, finished_at TEXT,
+        concurrency INTEGER NOT NULL, temperature REAL NOT NULL,
+        max_tokens INTEGER NOT NULL, notes TEXT
+      );
+      CREATE TABLE IF NOT EXISTS run_models (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+        slot INTEGER NOT NULL, name TEXT NOT NULL, model_ref TEXT NOT NULL,
+        owner_name TEXT, owner_name_group TEXT, owner_name_set_version TEXT,
+        persona TEXT, secret TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS matrix_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+        attacker_name TEXT NOT NULL, attacker_model TEXT NOT NULL,
+        attacker_owner_name TEXT, attacker_owner_name_group TEXT, attacker_owner_name_set_version TEXT,
+        defender_name TEXT NOT NULL, defender_model TEXT NOT NULL,
+        defender_owner_name TEXT, defender_owner_name_group TEXT, defender_owner_name_set_version TEXT,
+        status TEXT NOT NULL, attack_prompt TEXT NOT NULL, attack_message TEXT NOT NULL,
+        defense_prompt TEXT NOT NULL, defense_response TEXT NOT NULL,
+        attack_latency_ms INTEGER NOT NULL, defense_latency_ms INTEGER NOT NULL,
+        attack_generation_id TEXT, defense_generation_id TEXT,
+        attack_prompt_tokens INTEGER, attack_completion_tokens INTEGER,
+        attack_total_tokens INTEGER, attack_cost REAL, attack_usage_json TEXT,
+        defense_prompt_tokens INTEGER, defense_completion_tokens INTEGER,
+        defense_total_tokens INTEGER, defense_cost REAL, defense_usage_json TEXT,
+        error_text TEXT, started_at TEXT NOT NULL, finished_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS matrix_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+        attacker_name TEXT NOT NULL, attacker_model TEXT NOT NULL,
+        attacker_owner_name TEXT, attacker_owner_name_group TEXT, attacker_owner_name_set_version TEXT,
+        defender_name TEXT NOT NULL, defender_model TEXT NOT NULL,
+        defender_owner_name TEXT, defender_owner_name_group TEXT, defender_owner_name_set_version TEXT,
+        attempt_number INTEGER NOT NULL, status TEXT NOT NULL,
+        attack_prompt TEXT NOT NULL, attack_message TEXT NOT NULL,
+        defense_prompt TEXT NOT NULL, defense_response TEXT NOT NULL,
+        attack_latency_ms INTEGER NOT NULL, defense_latency_ms INTEGER NOT NULL,
+        attack_generation_id TEXT, defense_generation_id TEXT,
+        attack_prompt_tokens INTEGER, attack_completion_tokens INTEGER,
+        attack_total_tokens INTEGER, attack_cost REAL, attack_usage_json TEXT,
+        defense_prompt_tokens INTEGER, defense_completion_tokens INTEGER,
+        defense_total_tokens INTEGER, defense_cost REAL, defense_usage_json TEXT,
+        error_text TEXT, created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS head_to_head_matches (
+        run_id TEXT PRIMARY KEY, left_name TEXT NOT NULL, left_model TEXT NOT NULL,
+        left_owner_name TEXT, left_owner_name_group TEXT, left_owner_name_set_version TEXT,
+        left_secret TEXT NOT NULL, right_name TEXT NOT NULL, right_model TEXT NOT NULL,
+        right_owner_name TEXT, right_owner_name_group TEXT, right_owner_name_set_version TEXT,
+        right_secret TEXT NOT NULL, rounds_planned INTEGER NOT NULL,
+        rounds_completed INTEGER NOT NULL, outcome TEXT NOT NULL,
+        started_at TEXT NOT NULL, finished_at TEXT, error_text TEXT
+      );
+      CREATE TABLE IF NOT EXISTS head_to_head_turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
+        round_number INTEGER NOT NULL, actor_name TEXT NOT NULL,
+        actor_owner_name TEXT, actor_owner_name_group TEXT, actor_owner_name_set_version TEXT,
+        target_name TEXT NOT NULL, target_owner_name TEXT, target_owner_name_group TEXT,
+        target_owner_name_set_version TEXT, phase TEXT NOT NULL, status TEXT NOT NULL,
+        prompt_text TEXT NOT NULL, response_text TEXT NOT NULL, latency_ms INTEGER NOT NULL,
+        generation_id TEXT, prompt_tokens INTEGER, completion_tokens INTEGER,
+        total_tokens INTEGER, cost REAL, usage_json TEXT,
+        leaked_secret_owner TEXT, error_text TEXT, created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_matrix_results_run_id ON matrix_results(run_id);
+      CREATE INDEX IF NOT EXISTS idx_matrix_attempts_run_id ON matrix_attempts(run_id);
+      CREATE INDEX IF NOT EXISTS idx_head_to_head_turns_run_id ON head_to_head_turns(run_id);
+    `);
   }
   return _db;
 }
