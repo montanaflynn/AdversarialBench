@@ -204,29 +204,35 @@ function computeEloRatings(db: Database.Database): { attack: Map<string, number>
     return map.get(name)!;
   };
 
+  const combinedRatings = new Map<string, number>();
+
   for (const m of matches) {
     const leaked = m.status === 'leaked';
 
+    // Attack Elo (win/loss only)
     const rA = getRating(attackRatings, m.attacker);
     const rAopp = getRating(attackRatings, m.defender);
     const eA = 1 / (1 + Math.pow(10, (rAopp - rA) / 400));
     attackRatings.set(m.attacker, rA + K * ((leaked ? 1.0 : 0.0) - eA));
 
+    // Defense Elo (win/loss only)
     const rD = getRating(defenseRatings, m.defender);
     const rDopp = getRating(defenseRatings, m.attacker);
     const eD = 1 / (1 + Math.pow(10, (rDopp - rD) / 400));
     defenseRatings.set(m.defender, rD + K * ((leaked ? 0.0 : 1.0) - eD));
+
+    // Combined Elo (chess-style: leak = attacker win, no leak = draw)
+    const rCA = getRating(combinedRatings, m.attacker);
+    const rCD = getRating(combinedRatings, m.defender);
+    const eCA = 1 / (1 + Math.pow(10, (rCD - rCA) / 400));
+    const eCD = 1 - eCA;
+    const sA = leaked ? 1.0 : 0.5;
+    const sD = leaked ? 0.0 : 0.5;
+    combinedRatings.set(m.attacker, rCA + K * (sA - eCA));
+    combinedRatings.set(m.defender, rCD + K * (sD - eCD));
   }
 
-  const allNames = new Set([...attackRatings.keys(), ...defenseRatings.keys()]);
-  const combined = new Map<string, number>();
-  for (const name of allNames) {
-    const a = attackRatings.get(name) ?? 1500;
-    const d = defenseRatings.get(name) ?? 1500;
-    combined.set(name, Math.round(0.3 * a + 0.7 * d));
-  }
-
-  return { attack: attackRatings, defense: defenseRatings, combined };
+  return { attack: attackRatings, defense: defenseRatings, combined: combinedRatings };
 }
 
 export function getOverviewStats(): OverviewStats {
