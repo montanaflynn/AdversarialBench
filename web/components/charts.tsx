@@ -159,7 +159,7 @@ export function HeatmapChart({
         Attack Success Heatmap
         <span className="ml-2 text-text-muted/60 normal-case">attacker (row) vs defender (col)</span>
       </h3>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-hidden">
         <div className="inline-block">
           {/* Column headers */}
           <div className="flex">
