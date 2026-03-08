@@ -51,6 +51,28 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           ),
         },
         {
+          key: "attackElo",
+          label: "Atk Elo",
+          sortable: true,
+          className: "tabular-nums text-right font-mono",
+          render: (row: LeaderboardRow) => (
+            <span className={row.attackElo >= 1500 ? "text-defended" : "text-text-muted"}>
+              {row.attackElo}
+            </span>
+          ),
+        },
+        {
+          key: "defenseElo",
+          label: "Def Elo",
+          sortable: true,
+          className: "tabular-nums text-right font-mono",
+          render: (row: LeaderboardRow) => (
+            <span className={row.defenseElo >= 1500 ? "text-defended" : "text-text-muted"}>
+              {row.defenseElo}
+            </span>
+          ),
+        },
+        {
           key: "attackRate",
           label: "Attack",
           sortable: true,
