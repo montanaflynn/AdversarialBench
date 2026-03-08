@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { DataTable } from "@/components/data-table";
-import { LikeButton } from "@/components/like-button";
 import { MessageModal } from "@/components/message-modal";
 import type { LeakRow } from "@/lib/db";
 
@@ -75,24 +74,6 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
             ),
           },
           {
-            key: "attackLatencyMs",
-            label: "Atk Latency",
-            sortable: true,
-            className: "tabular-nums text-right",
-            render: (row: LeakRow) => (
-              <span className="text-text-muted">{(row.attackLatencyMs / 1000).toFixed(1)}s</span>
-            ),
-          },
-          {
-            key: "defenseLatencyMs",
-            label: "Def Latency",
-            sortable: true,
-            className: "tabular-nums text-right",
-            render: (row: LeakRow) => (
-              <span className="text-text-muted">{(row.defenseLatencyMs / 1000).toFixed(1)}s</span>
-            ),
-          },
-          {
             key: "finishedAt",
             label: "When",
             sortable: true,
@@ -118,14 +99,6 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
               >
                 {row.runId.slice(0, 8)}
               </a>
-            ),
-          },
-          {
-            key: "like",
-            label: "",
-            className: "w-10",
-            render: (row: LeakRow) => (
-              <LikeButton id={`leak-${row.id}`} />
             ),
           },
         ]}
