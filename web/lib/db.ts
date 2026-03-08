@@ -299,7 +299,7 @@ export function getLeaderboard(): LeaderboardRow[] {
     attackElo: Math.round(attackElo.get(r.name) ?? 1500),
     defenseElo: Math.round(defenseElo.get(r.name) ?? 1500),
     elo: Math.round(eloRatings.get(r.name) ?? 1500),
-  })).sort((a, b) => b.elo - a.elo);
+  })).sort((a, b) => b.defenseElo - a.defenseElo || b.attackElo - a.attackElo);
 }
 
 export function getRuns(limit = 100): Run[] {

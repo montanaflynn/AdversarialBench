@@ -26,7 +26,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
       data={data}
       searchKeys={["name", "modelRef"]}
       searchPlaceholder="Search models..."
-      defaultSortKey="elo"
+      defaultSortKey="defenseElo"
       defaultSortDir="desc"
       columns={[
         {
