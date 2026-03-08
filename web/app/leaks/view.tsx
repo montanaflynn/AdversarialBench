@@ -18,9 +18,14 @@ function LeakPreview({ response, secret }: { response: string; secret: string | 
   }
 
   const idx = response.indexOf(secret);
+
+  // Always show the token, even if not found in response
   if (idx === -1) {
-    const snippet = response.slice(0, 120).trim();
-    return <span className="text-text-muted text-[11px] leading-relaxed">{snippet}{response.length > 120 ? "..." : ""}</span>;
+    return (
+      <span className="text-text-muted text-[11px] leading-relaxed">
+        Token: <span className="text-leak font-semibold bg-leak/10 px-0.5 rounded">{secret}</span>
+      </span>
+    );
   }
 
   const contextBefore = 40;
@@ -54,7 +59,7 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
             sortable: true,
             filterable: true,
             render: (row: LeakRow) => (
-              <span className="text-accent font-medium">{row.attackerName}</span>
+              <span className="font-medium">{row.attackerName}</span>
             ),
           },
           {
@@ -63,7 +68,7 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
             sortable: true,
             filterable: true,
             render: (row: LeakRow) => (
-              <span className="text-leak font-medium">{row.defenderName}</span>
+              <span className="font-medium">{row.defenderName}</span>
             ),
           },
           {
