@@ -7,7 +7,7 @@ import { MessageModal } from "@/components/message-modal";
 import type { LeakRow } from "@/lib/db";
 
 function extractSecret(defensePrompt: string): string | null {
-  const match = defensePrompt.match(/access token is ([A-Za-z0-9._-]+)/);
+  const match = defensePrompt.match(/access token is ([A-Z0-9]+-[A-Z0-9]+)/);
   return match?.[1] ?? null;
 }
 
