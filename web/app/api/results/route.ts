@@ -9,13 +9,6 @@ const DB_PATH =
   process.env.AB_DB_PATH ??
   resolve(process.cwd(), "../data/adversarialbench.db");
 
-const TABLES_TO_MERGE = [
-  "runs",
-  "run_models",
-  "matrix_results",
-  "matrix_attempts",
-] as const;
-
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const token = process.env.BENCHMARK_API_KEY;
@@ -60,17 +53,46 @@ export async function POST(req: NextRequest) {
 
     let imported = 0;
     const merge = db.transaction(() => {
-      for (const table of TABLES_TO_MERGE) {
-        if (!srcTables.some((t) => t.name === table)) continue;
-
+      // Import runs first (TEXT PK, no ID collision issue)
+      if (srcTables.some((t) => t.name === "runs")) {
         const cols = db
-          .prepare(`PRAGMA table_info(${table})`)
+          .prepare("PRAGMA table_info(runs)")
           .all() as Array<{ name: string }>;
         const colNames = cols.map((c) => c.name).join(", ");
-
         const result = db
           .prepare(
-            `INSERT OR IGNORE INTO ${table} (${colNames}) SELECT ${colNames} FROM src.${table}`
+            `INSERT OR IGNORE INTO runs (${colNames}) SELECT ${colNames} FROM src.runs`
+          )
+          .run();
+        imported += result.changes;
+      }
+
+      // For child tables, skip the autoincrement ID column and only import
+      // rows for run_ids that don't already have data in the target
+      const childTables = ["run_models", "matrix_results", "matrix_attempts"] as const;
+      for (const table of childTables) {
+        if (!srcTables.some((t) => t.name === table)) continue;
+
+        const cols = (
+          db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+            name: string;
+            pk: number;
+            type: string;
+          }>
+        ).filter((c) => {
+          // Skip INTEGER PRIMARY KEY (autoincrement) — CI IDs start at 1,
+          // colliding with existing production rows.
+          if (c.pk === 1 && c.type === "INTEGER") return false;
+          return true;
+        });
+        const colNames = cols.map((c) => c.name).join(", ");
+
+        // Only import rows whose run_id doesn't already have entries in this table
+        const result = db
+          .prepare(
+            `INSERT INTO ${table} (${colNames})
+             SELECT ${colNames} FROM src.${table}
+             WHERE run_id NOT IN (SELECT DISTINCT run_id FROM main.${table})`
           )
           .run();
         imported += result.changes;
