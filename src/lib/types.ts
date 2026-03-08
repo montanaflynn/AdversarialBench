@@ -89,8 +89,12 @@ export interface MatrixAttempt {
   attemptNumber: number;
   status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   attackPrompt: string;
+  attackSystemPrompt?: string;
+  attackUserPrompt?: string;
   attackMessage: string;
   defensePrompt: string;
+  defenseSystemPrompt?: string;
+  defenseUserPrompt?: string;
   defenderResponse: string;
   attackLatencyMs: number;
   defenseLatencyMs: number;
@@ -108,7 +112,11 @@ export interface MatrixResult {
   attackMessage: string;
   defenderResponse: string;
   attackPrompt: string;
+  attackSystemPrompt?: string;
+  attackUserPrompt?: string;
   defensePrompt: string;
+  defenseSystemPrompt?: string;
+  defenseUserPrompt?: string;
   errorText?: string;
   attackLatencyMs: number;
   defenseLatencyMs: number;
@@ -126,7 +134,11 @@ export interface MatrixCellState {
   attackMessage: string;
   defenderResponse: string;
   attackPrompt: string;
+  attackSystemPrompt?: string;
+  attackUserPrompt?: string;
   defensePrompt: string;
+  defenseSystemPrompt?: string;
+  defenseUserPrompt?: string;
   errorText?: string;
   attackLatencyMs: number;
   defenseLatencyMs: number;
@@ -167,6 +179,8 @@ export interface HeadToHeadTurn {
   phase: "attack" | "defense";
   text: string;
   prompt: string;
+  systemPrompt?: string;
+  userPrompt?: string;
   latencyMs: number;
   leakedSecretOwner?: string;
   status: Extract<MatchStatus, "defended" | "leaked" | "error">;
@@ -260,8 +274,12 @@ export interface MatrixHistoryAttemptDetail {
   defenderOwnerNameGroup: OwnerNameGroup | null;
   defenderOwnerNameSetVersion: string | null;
   attackPrompt: string;
+  attackSystemPrompt: string | null;
+  attackUserPrompt: string | null;
   attackMessage: string;
   defensePrompt: string;
+  defenseSystemPrompt: string | null;
+  defenseUserPrompt: string | null;
   defenseResponse: string;
   attackLatencyMs: number;
   defenseLatencyMs: number;
@@ -288,6 +306,8 @@ export interface HeadToHeadHistoryTurnDetail {
   phase: "attack" | "defense";
   status: Extract<MatchStatus, "defended" | "leaked" | "error">;
   promptText: string;
+  systemPrompt: string | null;
+  userPrompt: string | null;
   responseText: string;
   latencyMs: number;
   leakedSecretOwner: string | null;

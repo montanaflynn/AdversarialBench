@@ -109,9 +109,11 @@ export function LeaksView({ data }: { data: LeakRow[] }) {
           title={`Leak: ${selected.attackerName} \u2192 ${selected.defenderName}`}
           onClose={() => setSelected(null)}
           sections={[
-            { label: "Attack Prompt", content: selected.attackPrompt },
+            { label: "Attack System Prompt", content: selected.attackSystemPrompt || selected.attackPrompt },
+            ...(selected.attackUserPrompt ? [{ label: "Attack User Prompt", content: selected.attackUserPrompt }] : []),
             { label: "Attack Message", content: selected.attackMessage },
-            { label: "Defense Prompt", content: selected.defensePrompt },
+            { label: "Defense System Prompt", content: selected.defenseSystemPrompt || selected.defensePrompt },
+            ...(selected.defenseUserPrompt ? [{ label: "Defense User Prompt", content: selected.defenseUserPrompt }] : []),
             { label: "Defense Response (leaked)", content: selected.defenseResponse },
           ]}
         />

@@ -20,12 +20,12 @@ async function createAttackMessage(
   defender: ResolvedModel,
   attempts: MatrixAttempt[],
   signal?: AbortSignal
-): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
+): Promise<{ text: string; prompt: string; systemPrompt: string; userPrompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   const prompt = buildMatrixAttackPrompt(attacker, defender, attempts, context.options.attackerMessages);
   if (context.options.offline || attacker.model.startsWith("scripted:")) {
     const result = await scriptedAttack(attacker, defender, attempts);
-    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, systemPrompt: prompt.systemPrompt, userPrompt: prompt.userPrompt, latencyMs: result.latencyMs };
   }
 
   const result = await runOpenRouterPrompt({
@@ -40,6 +40,8 @@ async function createAttackMessage(
   return {
     text: result.text,
     prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    systemPrompt: prompt.systemPrompt,
+    userPrompt: prompt.userPrompt,
     latencyMs: result.latencyMs,
     generationId: result.generationId,
     usage: result.usage
@@ -54,7 +56,7 @@ async function createDefenseResponse(
   attackMessage: string,
   attemptNumber: number,
   signal?: AbortSignal
-): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
+): Promise<{ text: string; prompt: string; systemPrompt: string; userPrompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   const prompt = buildMatrixDefensePrompt(
     defender,
@@ -66,7 +68,7 @@ async function createDefenseResponse(
   );
   if (context.options.offline || defender.model.startsWith("scripted:")) {
     const result = await scriptedDefense(defender, attackMessage, attempts);
-    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, systemPrompt: prompt.systemPrompt, userPrompt: prompt.userPrompt, latencyMs: result.latencyMs };
   }
 
   const result = await runOpenRouterPrompt({
@@ -81,6 +83,8 @@ async function createDefenseResponse(
   return {
     text: result.text,
     prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    systemPrompt: prompt.systemPrompt,
+    userPrompt: prompt.userPrompt,
     latencyMs: result.latencyMs,
     generationId: result.generationId,
     usage: result.usage
@@ -133,7 +137,11 @@ function finalizePairResult(attacker: ResolvedModel, defender: ResolvedModel, at
     attackMessage: finalAttempt.attackMessage,
     defenderResponse: finalAttempt.defenderResponse,
     attackPrompt: finalAttempt.attackPrompt,
+    attackSystemPrompt: finalAttempt.attackSystemPrompt,
+    attackUserPrompt: finalAttempt.attackUserPrompt,
     defensePrompt: finalAttempt.defensePrompt,
+    defenseSystemPrompt: finalAttempt.defenseSystemPrompt,
+    defenseUserPrompt: finalAttempt.defenseUserPrompt,
     errorText: finalAttempt.errorText,
     attackLatencyMs: finalAttempt.attackLatencyMs,
     defenseLatencyMs: finalAttempt.defenseLatencyMs,
@@ -215,7 +223,11 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
               attackMessage: attack.text,
               defenderResponse: defense.text,
               attackPrompt: attack.prompt,
+              attackSystemPrompt: attack.systemPrompt,
+              attackUserPrompt: attack.userPrompt,
               defensePrompt: defense.prompt,
+              defenseSystemPrompt: defense.systemPrompt,
+              defenseUserPrompt: defense.userPrompt,
               attackLatencyMs: attack.latencyMs,
               defenseLatencyMs: defense.latencyMs,
               attackGenerationId: attack.generationId,
@@ -231,7 +243,11 @@ export async function runMatrix(input: MatrixRunnerInput): Promise<MatrixRunReco
               attackMessage: attack.text,
               defenderResponse: defense.text,
               attackPrompt: attack.prompt,
+              attackSystemPrompt: attack.systemPrompt,
+              attackUserPrompt: attack.userPrompt,
               defensePrompt: defense.prompt,
+              defenseSystemPrompt: defense.systemPrompt,
+              defenseUserPrompt: defense.userPrompt,
               attackLatencyMs: attack.latencyMs,
               defenseLatencyMs: defense.latencyMs,
               attempts: [...attempts],

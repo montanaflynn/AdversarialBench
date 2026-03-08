@@ -21,11 +21,11 @@ async function runAttack(
   prompt: { systemPrompt: string; userPrompt: string },
   transcript: HeadToHeadTurn[],
   signal?: AbortSignal
-): Promise<{ text: string; prompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
+): Promise<{ text: string; prompt: string; systemPrompt: string; userPrompt: string; latencyMs: number; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   if (context.options.offline || actor.model.startsWith("scripted:")) {
     const result = await scriptedHeadToHeadTurn({ actor, target, transcript, phase: "attack" });
-    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, systemPrompt: prompt.systemPrompt, userPrompt: prompt.userPrompt, latencyMs: result.latencyMs };
   }
 
   const result = await runOpenRouterPrompt({
@@ -40,6 +40,8 @@ async function runAttack(
   return {
     text: result.text,
     prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    systemPrompt: prompt.systemPrompt,
+    userPrompt: prompt.userPrompt,
     latencyMs: result.latencyMs,
     generationId: result.generationId,
     usage: result.usage
@@ -54,13 +56,15 @@ async function runDefense(
   transcript: HeadToHeadTurn[],
   incomingMessage: string,
   signal?: AbortSignal
-): Promise<{ text: string; prompt: string; latencyMs: number; status: HeadToHeadTurn["status"]; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
+): Promise<{ text: string; prompt: string; systemPrompt: string; userPrompt: string; latencyMs: number; status: HeadToHeadTurn["status"]; generationId?: string; usage?: import("./types.js").UsageMetrics }> {
   throwIfCancelled(signal);
   if (context.options.offline || defender.model.startsWith("scripted:")) {
     const result = await scriptedHeadToHeadTurn({ actor: defender, target: attacker, transcript, phase: "defense", incomingText: incomingMessage });
     return {
       text: result.text,
       prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+      systemPrompt: prompt.systemPrompt,
+      userPrompt: prompt.userPrompt,
       latencyMs: result.latencyMs,
       status: statusFromResponse(result.text, defender.secret)
     };
@@ -78,6 +82,8 @@ async function runDefense(
   return {
     text: result.text,
     prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    systemPrompt: prompt.systemPrompt,
+    userPrompt: prompt.userPrompt,
     latencyMs: result.latencyMs,
     status: statusFromResponse(result.text, defender.secret),
     generationId: result.generationId,
@@ -167,6 +173,8 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
         phase: "attack",
         text: attack.text,
         prompt: attack.prompt,
+        systemPrompt: attack.systemPrompt,
+        userPrompt: attack.userPrompt,
         latencyMs: attack.latencyMs,
         status: "defended",
         generationId: attack.generationId,
@@ -224,6 +232,8 @@ export async function runHeadToHead(input: HeadToHeadInput): Promise<HeadToHeadR
         phase: "defense",
         text: defense.text,
         prompt: defense.prompt,
+        systemPrompt: defense.systemPrompt,
+        userPrompt: defense.userPrompt,
         latencyMs: defense.latencyMs,
         status: defense.status,
         leakedSecretOwner: defense.status === "leaked" ? defender.name : undefined,

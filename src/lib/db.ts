@@ -260,6 +260,48 @@ export class BenchmarkDatabase {
     this.ensureColumn("head_to_head_turns", "total_tokens", "INTEGER");
     this.ensureColumn("head_to_head_turns", "cost", "REAL");
     this.ensureColumn("head_to_head_turns", "usage_json", "TEXT");
+
+    // Split prompt columns
+    this.ensureColumn("matrix_results", "attack_system_prompt", "TEXT");
+    this.ensureColumn("matrix_results", "attack_user_prompt", "TEXT");
+    this.ensureColumn("matrix_results", "defense_system_prompt", "TEXT");
+    this.ensureColumn("matrix_results", "defense_user_prompt", "TEXT");
+
+    this.ensureColumn("matrix_attempts", "attack_system_prompt", "TEXT");
+    this.ensureColumn("matrix_attempts", "attack_user_prompt", "TEXT");
+    this.ensureColumn("matrix_attempts", "defense_system_prompt", "TEXT");
+    this.ensureColumn("matrix_attempts", "defense_user_prompt", "TEXT");
+
+    this.ensureColumn("head_to_head_turns", "system_prompt", "TEXT");
+    this.ensureColumn("head_to_head_turns", "user_prompt", "TEXT");
+
+    // Auto-migrate: split existing concatenated prompts on first \n\n
+    this.db.exec(`
+      UPDATE matrix_results SET
+        attack_system_prompt = substr(attack_prompt, 1, instr(attack_prompt, char(10)||char(10)) - 1),
+        attack_user_prompt = substr(attack_prompt, instr(attack_prompt, char(10)||char(10)) + 2)
+      WHERE attack_system_prompt IS NULL AND attack_prompt != '' AND instr(attack_prompt, char(10)||char(10)) > 0;
+
+      UPDATE matrix_results SET
+        defense_system_prompt = substr(defense_prompt, 1, instr(defense_prompt, char(10)||char(10)) - 1),
+        defense_user_prompt = substr(defense_prompt, instr(defense_prompt, char(10)||char(10)) + 2)
+      WHERE defense_system_prompt IS NULL AND defense_prompt != '' AND instr(defense_prompt, char(10)||char(10)) > 0;
+
+      UPDATE matrix_attempts SET
+        attack_system_prompt = substr(attack_prompt, 1, instr(attack_prompt, char(10)||char(10)) - 1),
+        attack_user_prompt = substr(attack_prompt, instr(attack_prompt, char(10)||char(10)) + 2)
+      WHERE attack_system_prompt IS NULL AND attack_prompt != '' AND instr(attack_prompt, char(10)||char(10)) > 0;
+
+      UPDATE matrix_attempts SET
+        defense_system_prompt = substr(defense_prompt, 1, instr(defense_prompt, char(10)||char(10)) - 1),
+        defense_user_prompt = substr(defense_prompt, instr(defense_prompt, char(10)||char(10)) + 2)
+      WHERE defense_system_prompt IS NULL AND defense_prompt != '' AND instr(defense_prompt, char(10)||char(10)) > 0;
+
+      UPDATE head_to_head_turns SET
+        system_prompt = substr(prompt_text, 1, instr(prompt_text, char(10)||char(10)) - 1),
+        user_prompt = substr(prompt_text, instr(prompt_text, char(10)||char(10)) + 2)
+      WHERE system_prompt IS NULL AND prompt_text != '' AND instr(prompt_text, char(10)||char(10)) > 0;
+    `);
   }
 
   private ensureColumn(tableName: string, columnName: string, definition: string): void {
@@ -330,7 +372,9 @@ export class BenchmarkDatabase {
         run_id, attacker_name, attacker_model, defender_name, defender_model, status,
         attacker_owner_name, attacker_owner_name_group, attacker_owner_name_set_version,
         defender_owner_name, defender_owner_name_group, defender_owner_name_set_version,
-        attack_prompt, attack_message, defense_prompt, defense_response,
+        attack_prompt, attack_system_prompt, attack_user_prompt,
+        attack_message, defense_prompt, defense_system_prompt, defense_user_prompt,
+        defense_response,
         attack_latency_ms, defense_latency_ms,
         attack_generation_id, defense_generation_id,
         attack_prompt_tokens, attack_completion_tokens, attack_total_tokens, attack_cost, attack_usage_json,
@@ -340,7 +384,9 @@ export class BenchmarkDatabase {
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @status,
         @attackerOwnerName, @attackerOwnerNameGroup, @attackerOwnerNameSetVersion,
         @defenderOwnerName, @defenderOwnerNameGroup, @defenderOwnerNameSetVersion,
-        @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
+        @attackPrompt, @attackSystemPrompt, @attackUserPrompt,
+        @attackMessage, @defensePrompt, @defenseSystemPrompt, @defenseUserPrompt,
+        @defenseResponse,
         @attackLatencyMs, @defenseLatencyMs,
         @attackGenerationId, @defenseGenerationId,
         @attackPromptTokens, @attackCompletionTokens, @attackTotalTokens, @attackCost, @attackUsageJson,
@@ -361,8 +407,12 @@ export class BenchmarkDatabase {
       defenderOwnerNameSetVersion: null,
       status: result.status,
       attackPrompt: result.attackPrompt,
+      attackSystemPrompt: result.attackSystemPrompt ?? null,
+      attackUserPrompt: result.attackUserPrompt ?? null,
       attackMessage: result.attackMessage,
       defensePrompt: result.defensePrompt,
+      defenseSystemPrompt: result.defenseSystemPrompt ?? null,
+      defenseUserPrompt: result.defenseUserPrompt ?? null,
       defenseResponse: result.defenderResponse,
       attackLatencyMs: result.attackLatencyMs,
       defenseLatencyMs: result.defenseLatencyMs,
@@ -392,7 +442,9 @@ export class BenchmarkDatabase {
         run_id, attacker_name, attacker_model, defender_name, defender_model, status,
         attacker_owner_name, attacker_owner_name_group, attacker_owner_name_set_version,
         defender_owner_name, defender_owner_name_group, defender_owner_name_set_version,
-        attack_prompt, attack_message, defense_prompt, defense_response,
+        attack_prompt, attack_system_prompt, attack_user_prompt,
+        attack_message, defense_prompt, defense_system_prompt, defense_user_prompt,
+        defense_response,
         attack_latency_ms, defense_latency_ms,
         attack_generation_id, defense_generation_id,
         attack_prompt_tokens, attack_completion_tokens, attack_total_tokens, attack_cost, attack_usage_json,
@@ -402,7 +454,9 @@ export class BenchmarkDatabase {
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @status,
         @attackerOwnerName, @attackerOwnerNameGroup, @attackerOwnerNameSetVersion,
         @defenderOwnerName, @defenderOwnerNameGroup, @defenderOwnerNameSetVersion,
-        @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
+        @attackPrompt, @attackSystemPrompt, @attackUserPrompt,
+        @attackMessage, @defensePrompt, @defenseSystemPrompt, @defenseUserPrompt,
+        @defenseResponse,
         @attackLatencyMs, @defenseLatencyMs,
         @attackGenerationId, @defenseGenerationId,
         @attackPromptTokens, @attackCompletionTokens, @attackTotalTokens, @attackCost, @attackUsageJson,
@@ -423,8 +477,12 @@ export class BenchmarkDatabase {
       defenderOwnerNameSetVersion: defenderOwner.setVersion,
       status: result.status,
       attackPrompt: result.attackPrompt,
+      attackSystemPrompt: result.attackSystemPrompt ?? null,
+      attackUserPrompt: result.attackUserPrompt ?? null,
       attackMessage: result.attackMessage,
       defensePrompt: result.defensePrompt,
+      defenseSystemPrompt: result.defenseSystemPrompt ?? null,
+      defenseUserPrompt: result.defenseUserPrompt ?? null,
       defenseResponse: result.defenderResponse,
       attackLatencyMs: result.attackLatencyMs,
       defenseLatencyMs: result.defenseLatencyMs,
@@ -459,7 +517,9 @@ export class BenchmarkDatabase {
         run_id, attacker_name, attacker_model, defender_name, defender_model, attempt_number, status,
         attacker_owner_name, attacker_owner_name_group, attacker_owner_name_set_version,
         defender_owner_name, defender_owner_name_group, defender_owner_name_set_version,
-        attack_prompt, attack_message, defense_prompt, defense_response,
+        attack_prompt, attack_system_prompt, attack_user_prompt,
+        attack_message, defense_prompt, defense_system_prompt, defense_user_prompt,
+        defense_response,
         attack_latency_ms, defense_latency_ms,
         attack_generation_id, defense_generation_id,
         attack_prompt_tokens, attack_completion_tokens, attack_total_tokens, attack_cost, attack_usage_json,
@@ -469,7 +529,9 @@ export class BenchmarkDatabase {
         @runId, @attackerName, @attackerModel, @defenderName, @defenderModel, @attemptNumber, @status,
         @attackerOwnerName, @attackerOwnerNameGroup, @attackerOwnerNameSetVersion,
         @defenderOwnerName, @defenderOwnerNameGroup, @defenderOwnerNameSetVersion,
-        @attackPrompt, @attackMessage, @defensePrompt, @defenseResponse,
+        @attackPrompt, @attackSystemPrompt, @attackUserPrompt,
+        @attackMessage, @defensePrompt, @defenseSystemPrompt, @defenseUserPrompt,
+        @defenseResponse,
         @attackLatencyMs, @defenseLatencyMs,
         @attackGenerationId, @defenseGenerationId,
         @attackPromptTokens, @attackCompletionTokens, @attackTotalTokens, @attackCost, @attackUsageJson,
@@ -491,8 +553,12 @@ export class BenchmarkDatabase {
       attemptNumber: attempt.attemptNumber,
       status: attempt.status,
       attackPrompt: attempt.attackPrompt,
+      attackSystemPrompt: attempt.attackSystemPrompt ?? null,
+      attackUserPrompt: attempt.attackUserPrompt ?? null,
       attackMessage: attempt.attackMessage,
       defensePrompt: attempt.defensePrompt,
+      defenseSystemPrompt: attempt.defenseSystemPrompt ?? null,
+      defenseUserPrompt: attempt.defenseUserPrompt ?? null,
       defenseResponse: attempt.defenderResponse,
       attackLatencyMs: attempt.attackLatencyMs,
       defenseLatencyMs: attempt.defenseLatencyMs,
@@ -570,14 +636,14 @@ export class BenchmarkDatabase {
         run_id, round_number, actor_name, target_name, phase, status,
         actor_owner_name, actor_owner_name_group, actor_owner_name_set_version,
         target_owner_name, target_owner_name_group, target_owner_name_set_version,
-        prompt_text, response_text, latency_ms,
+        prompt_text, system_prompt, user_prompt, response_text, latency_ms,
         generation_id, prompt_tokens, completion_tokens, total_tokens, cost, usage_json,
         leaked_secret_owner, error_text, created_at
       ) VALUES (
         @runId, @roundNumber, @actorName, @targetName, @phase, @status,
         @actorOwnerName, @actorOwnerNameGroup, @actorOwnerNameSetVersion,
         @targetOwnerName, @targetOwnerNameGroup, @targetOwnerNameSetVersion,
-        @promptText, @responseText, @latencyMs,
+        @promptText, @systemPrompt, @userPrompt, @responseText, @latencyMs,
         @generationId, @promptTokens, @completionTokens, @totalTokens, @cost, @usageJson,
         @leakedSecretOwner, @errorText, @createdAt
       )
@@ -595,6 +661,8 @@ export class BenchmarkDatabase {
       phase: turn.phase,
       status: turn.status,
       promptText: turn.prompt,
+      systemPrompt: turn.systemPrompt ?? null,
+      userPrompt: turn.userPrompt ?? null,
       responseText: turn.text,
       latencyMs: turn.latencyMs,
       generationId: turn.generationId ?? null,
@@ -915,8 +983,12 @@ export class BenchmarkDatabase {
         defender_owner_name_group AS defenderOwnerNameGroup,
         defender_owner_name_set_version AS defenderOwnerNameSetVersion,
         attack_prompt AS attackPrompt,
+        attack_system_prompt AS attackSystemPrompt,
+        attack_user_prompt AS attackUserPrompt,
         attack_message AS attackMessage,
         defense_prompt AS defensePrompt,
+        defense_system_prompt AS defenseSystemPrompt,
+        defense_user_prompt AS defenseUserPrompt,
         defense_response AS defenseResponse,
         attack_latency_ms AS attackLatencyMs,
         defense_latency_ms AS defenseLatencyMs,
@@ -951,6 +1023,8 @@ export class BenchmarkDatabase {
         phase,
         status,
         prompt_text AS promptText,
+        system_prompt AS systemPrompt,
+        user_prompt AS userPrompt,
         response_text AS responseText,
         latency_ms AS latencyMs,
         generation_id AS generationId,

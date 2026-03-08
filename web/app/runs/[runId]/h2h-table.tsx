@@ -87,7 +87,8 @@ export function HeadToHeadTable({ data }: { data: HeadToHeadTurnRow[] }) {
           title={`Round ${selected.roundNumber} - ${selected.actorName} ${selected.phase === "attack" ? "\u2192" : "\u2190"} ${selected.targetName}`}
           onClose={() => setSelected(null)}
           sections={[
-            { label: "Prompt", content: selected.promptText },
+            { label: "System Prompt", content: selected.systemPrompt || selected.promptText },
+            ...(selected.userPrompt ? [{ label: "User Prompt", content: selected.userPrompt }] : []),
             { label: "Response", content: selected.responseText },
             ...(selected.leakedSecretOwner ? [{ label: "Leaked Secret Owner", content: selected.leakedSecretOwner }] : []),
             ...(selected.errorText ? [{ label: "Error", content: selected.errorText }] : []),

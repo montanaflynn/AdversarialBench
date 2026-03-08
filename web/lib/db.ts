@@ -137,7 +137,11 @@ export interface MatrixResultRow {
   attackMessage: string;
   defenseResponse: string;
   attackPrompt: string;
+  attackSystemPrompt: string | null;
+  attackUserPrompt: string | null;
   defensePrompt: string;
+  defenseSystemPrompt: string | null;
+  defenseUserPrompt: string | null;
 }
 
 export interface LeakRow extends MatrixResultRow {
@@ -173,6 +177,8 @@ export interface HeadToHeadTurnRow {
   phase: string;
   status: string;
   promptText: string;
+  systemPrompt: string | null;
+  userPrompt: string | null;
   responseText: string;
   latencyMs: number;
   cost: number | null;
@@ -398,7 +404,8 @@ export function getMatrixResultsForRun(runId: string): MatrixResultRow[] {
       error_text AS errorText,
       started_at AS startedAt, finished_at AS finishedAt,
       attack_message AS attackMessage, defense_response AS defenseResponse,
-      attack_prompt AS attackPrompt, defense_prompt AS defensePrompt
+      attack_prompt AS attackPrompt, attack_system_prompt AS attackSystemPrompt, attack_user_prompt AS attackUserPrompt,
+      defense_prompt AS defensePrompt, defense_system_prompt AS defenseSystemPrompt, defense_user_prompt AS defenseUserPrompt
     FROM matrix_results
     WHERE run_id = ? AND ${EXCLUDE_SCRIPTED}
     ORDER BY
@@ -420,7 +427,8 @@ export function getLeaks(limit = 500): LeakRow[] {
       mr.error_text AS errorText,
       mr.started_at AS startedAt, mr.finished_at AS finishedAt,
       mr.attack_message AS attackMessage, mr.defense_response AS defenseResponse,
-      mr.attack_prompt AS attackPrompt, mr.defense_prompt AS defensePrompt,
+      mr.attack_prompt AS attackPrompt, mr.attack_system_prompt AS attackSystemPrompt, mr.attack_user_prompt AS attackUserPrompt,
+      mr.defense_prompt AS defensePrompt, mr.defense_system_prompt AS defenseSystemPrompt, mr.defense_user_prompt AS defenseUserPrompt,
       r.started_at AS runStartedAt
     FROM matrix_results mr
     JOIN runs r ON r.run_id = mr.run_id
@@ -502,6 +510,8 @@ export function getHeadToHeadTurnsForRun(runId: string): HeadToHeadTurnRow[] {
       target_name AS targetName,
       phase, status,
       prompt_text AS promptText,
+      system_prompt AS systemPrompt,
+      user_prompt AS userPrompt,
       response_text AS responseText,
       latency_ms AS latencyMs,
       cost,
