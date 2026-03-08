@@ -72,14 +72,14 @@ export default async function RunDetailPage({
         </>
       ) : (
         <>
-          {/* Matrix grid */}
-          <RunMatrixGrid data={matrixResults} />
-
           {/* Detail table */}
           <div>
             <h2 className="text-sm font-semibold mb-3">All Results</h2>
             <RunDetailTable data={matrixResults} />
           </div>
+
+          {/* Matrix grid */}
+          <RunMatrixGrid data={matrixResults} />
         </>
       )}
     </div>
