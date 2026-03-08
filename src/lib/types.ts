@@ -154,7 +154,6 @@ export interface MatrixSummaryRow {
   model: string;
   attackLeaks: number;
   defendLeaks: number;
-  defendRefusals: number;
   errors: number;
 }
 
