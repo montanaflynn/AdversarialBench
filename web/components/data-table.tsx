@@ -18,6 +18,8 @@ interface DataTableProps<T> {
   searchPlaceholder?: string;
   onRowClick?: (row: T) => void;
   pageSize?: number;
+  defaultSortKey?: string;
+  defaultSortDir?: "asc" | "desc";
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -27,10 +29,12 @@ export function DataTable<T extends Record<string, any>>({
   searchPlaceholder = "Search...",
   onRowClick,
   pageSize = 25,
+  defaultSortKey,
+  defaultSortDir = "asc",
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortKey, setSortKey] = useState<string | null>(defaultSortKey ?? null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(defaultSortDir);
   const [page, setPage] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
 
