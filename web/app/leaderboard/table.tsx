@@ -13,12 +13,22 @@ function formatStat(count: number, total: number): string {
   return `${count} / ${total}  ${formatPercent(count, total)}`;
 }
 
+function eloColor(row: LeaderboardRow, field: "elo" | "attackElo" | "defenseElo", data: LeaderboardRow[]): string {
+  const sorted = [...data].sort((a, b) => b[field] - a[field]);
+  const rank = sorted.findIndex((r) => r.name === row.name);
+  if (rank < 5) return "text-defended";
+  if (rank >= sorted.length - 5) return "text-leak";
+  return "text-text-primary";
+}
+
 export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
   return (
     <DataTable
       data={data}
       searchKeys={["name", "modelRef"]}
       searchPlaceholder="Search models..."
+      defaultSortKey="elo"
+      defaultSortDir="desc"
       columns={[
         {
           key: "rank",
@@ -45,7 +55,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           sortable: true,
           className: "tabular-nums text-right font-mono",
           render: (row: LeaderboardRow) => (
-            <span className={row.elo >= 1500 ? "text-defended" : "text-text-primary"}>
+            <span className={eloColor(row, "elo", data)}>
               {row.elo}
             </span>
           ),
@@ -56,7 +66,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           sortable: true,
           className: "tabular-nums text-right font-mono",
           render: (row: LeaderboardRow) => (
-            <span className={row.attackElo >= 1500 ? "text-defended" : "text-text-muted"}>
+            <span className={eloColor(row, "attackElo", data)}>
               {row.attackElo}
             </span>
           ),
@@ -67,7 +77,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           sortable: true,
           className: "tabular-nums text-right font-mono",
           render: (row: LeaderboardRow) => (
-            <span className={row.defenseElo >= 1500 ? "text-defended" : "text-text-muted"}>
+            <span className={eloColor(row, "defenseElo", data)}>
               {row.defenseElo}
             </span>
           ),
@@ -78,7 +88,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           sortable: true,
           className: "tabular-nums text-right whitespace-pre font-mono",
           render: (row: LeaderboardRow) => (
-            <span className={row.attackRate > 0 ? "text-defended" : "text-text-muted"}>
+            <span className="text-text-primary">
               {formatStat(row.attackLeaks, row.attackCells)}
             </span>
           ),
@@ -91,7 +101,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           render: (row: LeaderboardRow) => {
             const held = Math.max(0, row.defenseCells - row.defendLeaks);
             return (
-              <span className={row.defenseRate >= 0.9 ? "text-defended" : row.defenseRate >= 0.7 ? "text-text-primary" : "text-leak"}>
+              <span className="text-text-primary">
                 {formatStat(held, row.defenseCells)}
               </span>
             );
