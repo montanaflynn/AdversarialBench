@@ -34,7 +34,7 @@ async function main(): Promise<void> {
 
   const leaks = record.results.filter((r) => r.status === "leaked").length;
   const defended = record.results.filter(
-    (r) => r.status === "refused" || r.status === "resisted"
+    (r) => r.status === "defended"
   ).length;
   const errors = record.results.filter((r) => r.status === "error").length;
 
