@@ -133,7 +133,7 @@ export function HeatmapChart({
   data: Array<{ attackerName: string; defenderName: string; leakRate: number; leaks: number; total: number; defended?: number }>;
   models: string[];
 }) {
-  const cellSize = Math.max(56, Math.min(72, Math.floor(800 / models.length)));
+  const cellSize = Math.max(48, Math.min(64, Math.floor(800 / models.length)));
   const labelWidth = 100;
 
   // Compute row summaries (attack rate per attacker)
@@ -162,16 +162,21 @@ export function HeatmapChart({
       <div className="overflow-x-auto">
         <div className="inline-block">
           {/* Column headers */}
-          <div className="flex">
+          <div className="flex" style={{ marginBottom: 4 }}>
             <div style={{ width: labelWidth }} />
             {models.map((m) => (
               <div
                 key={m}
-                style={{ width: cellSize }}
-                className="text-[10px] text-text-muted text-center truncate px-0.5"
-                title={m}
+                style={{ width: cellSize, height: 80 }}
+                className="flex items-end justify-center"
               >
-                {m.length > 8 ? m.slice(0, 7) + ".." : m}
+                <span
+                  className="text-[10px] text-text-muted whitespace-nowrap origin-bottom-left"
+                  style={{ transform: "rotate(-45deg)", transformOrigin: "center", display: "block" }}
+                  title={m}
+                >
+                  {m}
+                </span>
               </div>
             ))}
             <div style={{ width: cellSize }} className="text-[10px] text-text-muted text-center font-semibold">
