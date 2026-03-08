@@ -17,6 +17,7 @@
     "head-to-head": "npm run build && node dist/index.js head-to-head",
     "add-model": "npm run build && node dist/add-model.js",
     "matrix:prod": "ssh -t god@213.111.152.198 'cd /opt/adversarialbench-src && node dist/index.js matrix --config ./agents.top.json --db /opt/adversarialbench/data/adversarialbench.db'",
+    "deploy:db": "scp ./data/elo-test.db god@213.111.152.198:/opt/adversarialbench/data/adversarialbench.db && ssh god@213.111.152.198 'sudo systemctl restart adversarialbench' && echo 'DB deployed and service restarted'",
     "simulate": "npm run build && node dist/index.js matrix --config ./agents.example.json --offline",
     "test": "npm run build && node --test dist/test/app.test.js"
   },
