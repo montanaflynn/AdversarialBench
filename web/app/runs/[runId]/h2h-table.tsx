@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
-import { LikeButton } from "@/components/like-button";
 import { MessageModal } from "@/components/message-modal";
 import type { HeadToHeadTurnRow } from "@/lib/db";
 
@@ -78,14 +77,6 @@ export function HeadToHeadTable({ data }: { data: HeadToHeadTurnRow[] }) {
               <span className="text-text-muted">
                 {row.cost != null && row.cost > 0 ? `$${row.cost.toFixed(4)}` : "-"}
               </span>
-            ),
-          },
-          {
-            key: "like",
-            label: "",
-            className: "w-10",
-            render: (row: HeadToHeadTurnRow) => (
-              <LikeButton id={`h2h-${row.id}`} />
             ),
           },
         ]}

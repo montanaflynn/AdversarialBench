@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
-import { LikeButton } from "@/components/like-button";
 import { MessageModal } from "@/components/message-modal";
 import type { MatrixResultRow } from "@/lib/db";
 
@@ -74,14 +73,6 @@ export function RunDetailTable({ data }: { data: MatrixResultRow[] }) {
                 </span>
               );
             },
-          },
-          {
-            key: "like",
-            label: "",
-            className: "w-10",
-            render: (row: MatrixResultRow) => (
-              <LikeButton id={`result-${row.id}`} />
-            ),
           },
         ]}
       />

@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/data-table";
 import { StatusBadge } from "@/components/status-badge";
-import { LikeButton } from "@/components/like-button";
 import type { Run } from "@/lib/db";
 
 function formatDate(iso: string | null): string {
@@ -86,12 +85,6 @@ export function RunsTable({ data }: { data: Run[] }) {
           render: (row: Run) => (
             <span className="text-text-muted">{formatDate(row.startedAt)}</span>
           ),
-        },
-        {
-          key: "like",
-          label: "",
-          className: "w-10",
-          render: (row: Run) => <LikeButton id={`run-${row.runId}`} />,
         },
       ]}
     />

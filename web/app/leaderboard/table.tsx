@@ -1,7 +1,6 @@
 "use client";
 
 import { DataTable } from "@/components/data-table";
-import { LikeButton } from "@/components/like-button";
 import type { LeaderboardRow } from "@/lib/db";
 
 function formatPercent(n: number, d: number): string {
@@ -116,14 +115,6 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
             <span className={row.errors > 0 ? "text-error" : "text-text-muted"}>
               {row.errors}
             </span>
-          ),
-        },
-        {
-          key: "like",
-          label: "",
-          className: "w-10",
-          render: (row: LeaderboardRow) => (
-            <LikeButton id={`model-${row.name}`} />
           ),
         },
       ]}
