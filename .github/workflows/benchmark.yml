@@ -23,7 +23,7 @@ jobs:
       - name: Run matrix benchmark
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: node dist/index.js matrix --config ./agents.flagship.json --db /tmp/bench.db
+        run: node dist/ci.js matrix --config ./agents.flagship.json --db /tmp/bench.db
 
       - name: Upload results
         run: |
