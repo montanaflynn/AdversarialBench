@@ -1,8 +1,18 @@
+"use client";
+
+import { useState } from "react";
 import type { LeaderboardRow } from "@/lib/db";
 import Link from "next/link";
 
+type SortKey = "defenseRate" | "attackRate";
+
 export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
-  const sorted = [...data].sort((a, b) => b.defenseRate - a.defenseRate);
+  const [sortBy, setSortBy] = useState<SortKey>("defenseRate");
+
+  const sorted = [...data].sort((a, b) => b[sortBy] - a[sortBy]);
+
+  const headerClass = (key: SortKey) =>
+    `text-right py-1.5 font-medium cursor-pointer select-none hover:text-text-secondary ${sortBy === key ? "text-accent" : ""}`;
 
   return (
     <div className="bg-surface-raised border border-border rounded-lg p-4">
@@ -22,8 +32,12 @@ export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
           <tr className="text-text-muted border-b border-border">
             <th className="text-left py-1.5 font-medium w-6">#</th>
             <th className="text-left py-1.5 font-medium">Model</th>
-            <th className="text-right py-1.5 font-medium">Atk Rate</th>
-            <th className="text-right py-1.5 font-medium">Def Rate</th>
+            <th className={headerClass("attackRate")} onClick={() => setSortBy("attackRate")}>
+              Atk Rate{sortBy === "attackRate" ? " ▼" : ""}
+            </th>
+            <th className={headerClass("defenseRate")} onClick={() => setSortBy("defenseRate")}>
+              Def Rate{sortBy === "defenseRate" ? " ▼" : ""}
+            </th>
           </tr>
         </thead>
         <tbody>
