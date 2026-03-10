@@ -12,7 +12,7 @@ function formatStat(count: number, total: number): string {
   return `${count} / ${total}  ${formatPercent(count, total)}`;
 }
 
-function eloColor(row: LeaderboardRow, field: "elo" | "attackElo" | "defenseElo", data: LeaderboardRow[]): string {
+function eloColor(row: LeaderboardRow, field: "elo", data: LeaderboardRow[]): string {
   const sorted = [...data].sort((a, b) => b[field] - a[field]);
   const rank = sorted.findIndex((r) => r.name === row.name);
   if (rank < 5) return "text-defended";
@@ -26,7 +26,7 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
       data={data}
       searchKeys={["name", "modelRef"]}
       searchPlaceholder="Search models..."
-      defaultSortKey="defenseElo"
+      defaultSortKey="elo"
       defaultSortDir="desc"
       columns={[
         {
@@ -56,28 +56,6 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           render: (row: LeaderboardRow) => (
             <span className={eloColor(row, "elo", data)}>
               {row.elo}
-            </span>
-          ),
-        },
-        {
-          key: "attackElo",
-          label: "Atk Elo",
-          sortable: true,
-          className: "tabular-nums text-right font-mono",
-          render: (row: LeaderboardRow) => (
-            <span className={eloColor(row, "attackElo", data)}>
-              {row.attackElo}
-            </span>
-          ),
-        },
-        {
-          key: "defenseElo",
-          label: "Def Elo",
-          sortable: true,
-          className: "tabular-nums text-right font-mono",
-          render: (row: LeaderboardRow) => (
-            <span className={eloColor(row, "defenseElo", data)}>
-              {row.defenseElo}
             </span>
           ),
         },
