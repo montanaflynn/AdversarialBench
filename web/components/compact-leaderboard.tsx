@@ -1,8 +1,36 @@
+"use client";
+
+import { useState } from "react";
 import type { LeaderboardRow } from "@/lib/db";
 import Link from "next/link";
 
+type SortKey = "elo" | "attackRate" | "defenseRate" | "name";
+
 export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
-  const sorted = [...data].sort((a, b) => b.elo - a.elo);
+  const [sortKey, setSortKey] = useState<SortKey>("elo");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir(sortDir === "desc" ? "asc" : "desc");
+    } else {
+      setSortKey(key);
+      setSortDir(key === "name" ? "asc" : "desc");
+    }
+  }
+
+  const sorted = [...data].sort((a, b) => {
+    const mul = sortDir === "desc" ? -1 : 1;
+    if (sortKey === "name") return mul * a.name.localeCompare(b.name);
+    return mul * (a[sortKey] - b[sortKey]);
+  });
+
+  function sortIndicator(key: SortKey) {
+    if (sortKey !== key) return null;
+    return <span className="ml-0.5">{sortDir === "desc" ? "↓" : "↑"}</span>;
+  }
+
+  const thClass = "py-1.5 font-medium cursor-pointer hover:text-text-secondary select-none";
 
   return (
     <div className="bg-surface-raised border border-border rounded-lg p-4">
@@ -21,10 +49,18 @@ export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
         <thead>
           <tr className="text-text-muted border-b border-border">
             <th className="text-left py-1.5 font-medium w-6">#</th>
-            <th className="text-left py-1.5 font-medium">Model</th>
-            <th className="text-right py-1.5 font-medium">Elo</th>
-            <th className="text-right py-1.5 font-medium">Atk Rate</th>
-            <th className="text-right py-1.5 font-medium">Def Rate</th>
+            <th className={`text-left ${thClass}`} onClick={() => toggleSort("name")}>
+              Model{sortIndicator("name")}
+            </th>
+            <th className={`text-right ${thClass}`} onClick={() => toggleSort("elo")}>
+              Elo{sortIndicator("elo")}
+            </th>
+            <th className={`text-right ${thClass}`} onClick={() => toggleSort("attackRate")}>
+              Atk Rate{sortIndicator("attackRate")}
+            </th>
+            <th className={`text-right ${thClass}`} onClick={() => toggleSort("defenseRate")}>
+              Def Rate{sortIndicator("defenseRate")}
+            </th>
           </tr>
         </thead>
         <tbody>
