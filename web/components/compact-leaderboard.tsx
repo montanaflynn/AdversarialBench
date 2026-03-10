@@ -30,6 +30,15 @@ export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
     return <span className="ml-0.5">{sortDir === "desc" ? "↓" : "↑"}</span>;
   }
 
+  const eloRanked = [...data].sort((a, b) => b.elo - a.elo);
+  const eloValues = [...new Set(eloRanked.map((r) => r.elo))].sort((a, b) => b - a);
+  function eloColor(elo: number): string {
+    const rank = eloValues.indexOf(elo);
+    if (rank < 5) return "text-defended";
+    if (rank >= eloValues.length - 5) return "text-leak";
+    return "text-text-primary";
+  }
+
   const thClass = "py-1.5 font-medium cursor-pointer hover:text-text-secondary select-none";
 
   return (
@@ -70,7 +79,7 @@ export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
               <td className="py-1.5 text-text-primary font-medium truncate max-w-[180px]">
                 {row.name}
               </td>
-              <td className="py-1.5 text-right tabular-nums font-mono text-text-primary">
+              <td className={`py-1.5 text-right tabular-nums font-mono ${eloColor(row.elo)}`}>
                 {row.elo}
               </td>
               <td className="py-1.5 text-right tabular-nums">
