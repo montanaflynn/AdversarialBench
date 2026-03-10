@@ -8,6 +8,8 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceLine,
+  Cell,
 } from "recharts";
 
 const tooltipStyle = {
@@ -39,6 +41,53 @@ function LeaksChart({
   });
   const height = Math.max(200, sorted.length * 32 + 40);
 
+  if (view === "both") {
+    const diverging = sorted.map((d) => ({
+      name: d.name,
+      leaks: -d.asDefender,
+      attacks: d.asAttacker,
+      _leaksRaw: d.asDefender,
+      _attacksRaw: d.asAttacker,
+    }));
+    const maxVal = Math.max(...data.map((d) => Math.max(d.asAttacker, d.asDefender)));
+    const domain = [-maxVal, maxVal];
+
+    return (
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart data={diverging} layout="vertical" barSize={14} barGap={0}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
+          <XAxis
+            type="number"
+            domain={domain}
+            tick={{ fontSize: 11, fill: "#71717a" }}
+            tickFormatter={(v: number) => `${Math.abs(v)}`}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={{ fontSize: 11, fill: "#a1a1aa" }}
+            axisLine={false}
+            tickLine={false}
+            width={90}
+          />
+          <Tooltip
+            {...tooltipStyle}
+            cursor={false}
+            formatter={(value: number, name: string) => {
+              const label = name === "leaks" ? "Leaks suffered" : "Successful attacks";
+              return [Math.abs(value), label];
+            }}
+          />
+          <ReferenceLine x={0} stroke="#3f3f46" />
+          <Bar dataKey="leaks" name="leaks" stackId="div" radius={[3, 0, 0, 3]} fill="#ef4444" />
+          <Bar dataKey="attacks" name="attacks" stackId="div" radius={[0, 3, 3, 0]} fill="#3b82f6" />
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={sorted} layout="vertical" barSize={14} barGap={0}>
@@ -58,23 +107,11 @@ function LeaksChart({
           width={90}
         />
         <Tooltip {...tooltipStyle} cursor={false} />
-        {(view === "attacks" || view === "both") && (
-          <Bar
-            dataKey="asAttacker"
-            name="Successful attacks"
-            stackId="leaks"
-            fill="#3b82f6"
-            radius={view === "attacks" ? [0, 3, 3, 0] : [0, 0, 0, 0]}
-          />
+        {view === "attacks" && (
+          <Bar dataKey="asAttacker" name="Successful attacks" fill="#3b82f6" radius={[0, 3, 3, 0]} />
         )}
-        {(view === "leaks" || view === "both") && (
-          <Bar
-            dataKey="asDefender"
-            name="Leaks suffered"
-            stackId="leaks"
-            fill="#ef4444"
-            radius={[0, 3, 3, 0]}
-          />
+        {view === "leaks" && (
+          <Bar dataKey="asDefender" name="Leaks suffered" fill="#ef4444" radius={[0, 3, 3, 0]} />
         )}
       </BarChart>
     </ResponsiveContainer>
