@@ -30,12 +30,11 @@ export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
     return <span className="ml-0.5">{sortDir === "desc" ? "↓" : "↑"}</span>;
   }
 
-  const eloRanked = [...data].sort((a, b) => b.elo - a.elo);
-  const eloValues = [...new Set(eloRanked.map((r) => r.elo))].sort((a, b) => b - a);
-  function eloColor(elo: number): string {
-    const rank = eloValues.indexOf(elo);
+  function rankColor(value: number, field: "elo" | "attackRate" | "defenseRate"): string {
+    const values = [...new Set(data.map((r) => r[field]))].sort((a, b) => b - a);
+    const rank = values.indexOf(value);
     if (rank < 5) return "text-defended";
-    if (rank >= eloValues.length - 5) return "text-leak";
+    if (rank >= values.length - 5) return "text-leak";
     return "text-text-primary";
   }
 
@@ -79,18 +78,14 @@ export function CompactLeaderboard({ data }: { data: LeaderboardRow[] }) {
               <td className="py-1.5 text-text-primary font-medium truncate max-w-[180px]">
                 {row.name}
               </td>
-              <td className={`py-1.5 text-right tabular-nums font-mono ${eloColor(row.elo)}`}>
+              <td className={`py-1.5 text-right tabular-nums font-mono ${rankColor(row.elo, "elo")}`}>
                 {row.elo}
               </td>
-              <td className="py-1.5 text-right tabular-nums">
-                <span className={row.attackRate > 0.3 ? "text-defended" : row.attackRate > 0.1 ? "text-amber-400" : "text-text-muted"}>
-                  {(row.attackRate * 100).toFixed(1)}%
-                </span>
+              <td className={`py-1.5 text-right tabular-nums ${rankColor(row.attackRate, "attackRate")}`}>
+                {(row.attackRate * 100).toFixed(1)}%
               </td>
-              <td className="py-1.5 text-right tabular-nums">
-                <span className={row.defenseRate >= 0.9 ? "text-defended" : row.defenseRate >= 0.7 ? "text-text-primary" : "text-leak"}>
-                  {(row.defenseRate * 100).toFixed(1)}%
-                </span>
+              <td className={`py-1.5 text-right tabular-nums ${rankColor(row.defenseRate, "defenseRate")}`}>
+                {(row.defenseRate * 100).toFixed(1)}%
               </td>
             </tr>
           ))}
