@@ -81,8 +81,8 @@ function LeaksChart({
             }}
           />
           <ReferenceLine x={0} stroke="#3f3f46" />
-          <Bar dataKey="leaks" name="leaks" stackId="div" radius={[3, 0, 0, 3]} fill="#ef4444" />
-          <Bar dataKey="attacks" name="attacks" stackId="div" radius={[0, 3, 3, 0]} fill="#3b82f6" />
+          <Bar dataKey="leaks" name="leaks" radius={[3, 0, 0, 3]} fill="#ef4444" />
+          <Bar dataKey="attacks" name="attacks" radius={[0, 3, 3, 0]} fill="#3b82f6" />
         </BarChart>
       </ResponsiveContainer>
     );
