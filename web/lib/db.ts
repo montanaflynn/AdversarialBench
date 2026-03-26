@@ -301,7 +301,7 @@ export function getLeaderboard(): LeaderboardRow[] {
   return rows.map(r => ({
     ...r,
     attackRate: r.attackCells > 0 ? r.attackLeaks / r.attackCells : 0,
-    defenseRate: r.defenseCells > 0 ? (r.defenseCells - r.defendLeaks) / r.defenseCells : 0,
+    defenseRate: r.defenseCells > 0 ? r.defends / r.defenseCells : 0,
     attackElo: Math.round(attackElo.get(r.name) ?? 1500),
     defenseElo: Math.round(defenseElo.get(r.name) ?? 1500),
     elo: Math.round(eloRatings.get(r.name) ?? 1500),
