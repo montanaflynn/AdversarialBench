@@ -75,14 +75,11 @@ export function LeaderboardTable({ data }: { data: LeaderboardRow[] }) {
           label: "Defense",
           sortable: true,
           className: "tabular-nums text-right whitespace-pre font-mono",
-          render: (row: LeaderboardRow) => {
-            const held = Math.max(0, row.defenseCells - row.defendLeaks);
-            return (
-              <span className="text-text-primary">
-                {formatStat(held, row.defenseCells)}
-              </span>
-            );
-          },
+          render: (row: LeaderboardRow) => (
+            <span className="text-text-primary">
+              {formatStat(row.defends, row.defenseCells)}
+            </span>
+          ),
         },
         {
           key: "errors",
