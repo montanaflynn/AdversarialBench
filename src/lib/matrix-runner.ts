@@ -66,7 +66,7 @@ async function createDefenseResponse(
   );
   if (context.options.offline || defender.model.startsWith("scripted:")) {
     const result = await scriptedDefense(defender, attackMessage, attempts);
-    return { text: result.text, prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`, latencyMs: result.latencyMs };
+    return { text: result.text, prompt: prompt.systemPrompt, latencyMs: result.latencyMs };
   }
 
   const result = await runOpenRouterPrompt({
@@ -80,7 +80,7 @@ async function createDefenseResponse(
 
   return {
     text: result.text,
-    prompt: `${prompt.systemPrompt}\n\n${prompt.userPrompt}`,
+    prompt: prompt.systemPrompt,
     latencyMs: result.latencyMs,
     generationId: result.generationId,
     usage: result.usage
